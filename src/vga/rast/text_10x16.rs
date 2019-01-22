@@ -80,19 +80,32 @@ impl<'arena> Text10x16<'arena> {
 
         // If the x_adj is positive, stretch the first character's background
         // into the left margin.
-        if self.x_adj > 0 {
+        let (x_adj, target) = if self.x_adj > 0 {
+            let x_adj = self.x_adj as usize;
             let bg = (src[0] >> 8) as Pixel;
-            for t in &mut ctx.target[0..self.x_adj as usize] {
+            for t in &mut ctx.target[0..x_adj] {
                 *t = bg
             }
+            // Start rasterizin' after the margin.
+            (0, &mut ctx.target[x_adj .. x_adj + self.cols * GLYPH_COLS])
         } else if self.x_adj < 0 {
             // Fill in the right margin.
+            let x_adj = (-self.x_adj) as usize;
             let bg = (src[self.cols - 1] >> 8) as Pixel;
-            for t in &mut ctx.target[self.cols * GLYPH_COLS - (-self.x_adj as usize) ..] {
+            for t in &mut ctx.target[self.cols * GLYPH_COLS - x_adj .. self.cols * GLYPH_COLS] {
                 *t = bg
             }
-        }
+            // Start rasterizin' from the left.
+            (x_adj, &mut ctx.target[.. self.cols * GLYPH_COLS])
+        } else {
+            (0, &mut ctx.target[.. self.cols * GLYPH_COLS])
+        };
 
+        debug_assert_eq!(
+            target.len(),
+            self.cols * GLYPH_COLS,
+            "Bug: unpack_text_10p_attributed_impl will write out of bounds",
+        );
         unsafe {
             unpack_text_10p_attributed_impl(
                 // We know src points to at least 'cols' worth of valid data, so
@@ -101,15 +114,13 @@ impl<'arena> Text10x16<'arena> {
                 // We likewise know that there are FONT_CHARS worth of font
                 // bytes.
                 font.as_ptr(),
-                // TODO: the way x_adj was implemented in C++ is safe-ish if you
-                // squint, but relies on some detailed knowledge of buffer
-                // memory layouts. We need to find a better way. Until then,
-                // smooth text scrolling doesn't work.
-                ctx.target.as_ptr(),
+                // Aaaand we just checked the target length above.
+                target.as_ptr(),
                 self.cols);
         }
 
-        ctx.target_range = 0 .. (self.cols * GLYPH_COLS
-                - if self.hide_right { GLYPH_COLS } else { 0 });
+        let raster_len = self.cols * GLYPH_COLS 
+                - if self.hide_right { GLYPH_COLS } else { 0 };
+        ctx.target_range = x_adj .. x_adj + raster_len;
     }
 }
