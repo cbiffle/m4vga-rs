@@ -1,3 +1,6 @@
+pub mod bitmap_1;
+pub mod text_10x16;
+
 use core::sync::atomic::{Ordering, AtomicUsize, AtomicBool};
 use core::cell::Cell;
 use core::ptr::NonNull;
@@ -77,14 +80,17 @@ pub struct RasterCtx {
     /// Setting `repeat_lines` to a non-zero value skips calling the raster
     /// callback for that many lines, which can be used to save compute.
     pub repeat_lines: usize,
-    /// Rasterization target. Provided by the driver as a slice pointing to at
-    /// least `TARGET_BUFFER_SIZE` pixels, which is deliberately longer than a
-    /// line of video to give scanout algorithms some flexibility (i.e. allow
-    /// them to be sloppy when smooth-scrolling).
-    pub target: &'static mut [Pixel],
-    /// Rasterization range within `target`. Defaults to the width of a line in
-    /// the current mode, starting at zero. Callbacks can rewrite this to render
-    /// a portion of the buffer.
+    /// Rasterization target. Provided by the driver for the raster callback to
+    /// scribble in. Output can appear anywhere within the array, but its extent
+    /// should be reflected in `target_range` when the callback returns.
+    pub target: &'static mut [Pixel; TARGET_BUFFER_SIZE],
+    /// Rasterization range within `target`. The range is *empty* when the
+    /// callback starts! To show any actual video, the callback *must* replace
+    /// it with the range of valid pixels in `target`.
+    ///
+    /// If you set this outside of the bounds of `target`, the driver's behavior
+    /// is undefined. (Not unsafe -- it just reserves the right to replace video
+    /// output with an embarrassing picture of you.)
     pub target_range: core::ops::Range<usize>,
 }
 

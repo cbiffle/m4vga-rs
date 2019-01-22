@@ -1,7 +1,7 @@
 //! Text renderer using 10x16 pixel character cells.
 
 use crate::arena::{self, Arena};
-use crate::rast::{Rasterize, RasterInfo, Pixel};
+use crate::vga::rast::{RasterCtx, Pixel};
 
 const GLYPH_COLS: usize = 10;
 const GLYPH_ROWS: usize = 16;
@@ -55,21 +55,16 @@ impl<'arena> Text10x16<'arena> {
             fb: arena.alloc_slice_default(cols * rows).unwrap(),
         }
     }
-}
 
-impl<'arena> Rasterize for Text10x16<'arena> {
-    fn rasterize(&mut self,
-                 cycles_per_pixel: u32,
+    fn rasterize(&self,
                  line_number: usize,
-                 target: &mut [Pixel])
-        -> RasterInfo
-    {
+                 ctx: &mut RasterCtx) {
         let line_number = line_number - self.top_line;
 
         let text_row = line_number / GLYPH_ROWS;
         let row_in_glyph = line_number % GLYPH_ROWS;
         if text_row >= self.rows {
-            return RasterInfo { cycles_per_pixel, ..RasterInfo::default() }
+            return
         }
 
         debug_assert!(text_row < self.rows);
@@ -87,13 +82,13 @@ impl<'arena> Rasterize for Text10x16<'arena> {
         // into the left margin.
         if self.x_adj > 0 {
             let bg = (src[0] >> 8) as Pixel;
-            for t in &mut target[0..self.x_adj as usize] {
+            for t in &mut ctx.target[0..self.x_adj as usize] {
                 *t = bg
             }
         } else if self.x_adj < 0 {
             // Fill in the right margin.
             let bg = (src[self.cols - 1] >> 8) as Pixel;
-            for t in &mut target[self.cols * GLYPH_COLS - (-self.x_adj as usize) ..] {
+            for t in &mut ctx.target[self.cols * GLYPH_COLS - (-self.x_adj as usize) ..] {
                 *t = bg
             }
         }
@@ -110,15 +105,11 @@ impl<'arena> Rasterize for Text10x16<'arena> {
                 // squint, but relies on some detailed knowledge of buffer
                 // memory layouts. We need to find a better way. Until then,
                 // smooth text scrolling doesn't work.
-                target.as_ptr(),
+                ctx.target.as_ptr(),
                 self.cols);
         }
 
-        RasterInfo {
-            length: self.cols + GLYPH_COLS
-                - if self.hide_right { GLYPH_COLS } else { 0 },
-            cycles_per_pixel,
-            ..RasterInfo::default()
-        }
+        ctx.target_range = 0 .. (self.cols * GLYPH_COLS
+                - if self.hide_right { GLYPH_COLS } else { 0 });
     }
 }

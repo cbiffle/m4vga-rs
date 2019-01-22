@@ -3,7 +3,7 @@ use core::mem;
 use core::ptr::null_mut;
 
 use crate::copy_words::copy_words;
-use crate::rast::{Pixel, Rasterize, RasterInfo};
+use crate::vga::rast::{Pixel, RasterCtx};
 use crate::arena::{self, Arena};
 
 extern {
@@ -94,12 +94,9 @@ impl<'arena> Bitmap1<'arena> {
         }
     }
 
-    fn rasterize_(&self,
-                 cycles_per_pixel: u32,
+    fn rasterize(&self,
                  line_number: usize,
-                 target: &mut [Pixel])
-        -> RasterInfo
-    {
+                 ctx: &mut RasterCtx) {
         let line_number = line_number.wrapping_sub(self.top_line);
 
         if line_number == 0 {
@@ -109,7 +106,8 @@ impl<'arena> Bitmap1<'arena> {
         }
 
         if line_number >= self.lines {
-            return RasterInfo { cycles_per_pixel, ..RasterInfo::default() }
+            // leave target_range empty, producing black output
+            return
         }
 
         let front = if self.use_fb1.load(Ordering::Acquire) {
@@ -123,7 +121,7 @@ impl<'arena> Bitmap1<'arena> {
                 unpack_1bpp_overlay_impl(
                     &front[self.words_per_line * line_number],
                     &self.clut,
-                    target.as_mut_ptr(),
+                    ctx.target.as_mut_ptr(),
                     self.words_per_line as u32,
                     &bg[0],
                 );
@@ -133,37 +131,29 @@ impl<'arena> Bitmap1<'arena> {
                 unpack_1bpp_impl(
                     &front[self.words_per_line * line_number],
                     &self.clut,
-                    target.as_mut_ptr(),
+                    ctx.target.as_mut_ptr(),
                     self.words_per_line as u32,
                 );
             }
         }
 
-        RasterInfo {
-            length: self.words_per_line * 32,
-            cycles_per_pixel,
-            ..RasterInfo::default()
-        }
+        ctx.target_range = 0 .. self.words_per_line * 32;
     }
 }
 
-impl<'arena> Rasterize for Bitmap1<'arena> {
-    fn rasterize(&mut self,
-                 cycles_per_pixel: u32,
-                 line_number: usize,
-                 target: &mut [Pixel])
-        -> RasterInfo
-    {
-        self.rasterize_(cycles_per_pixel, line_number, target)
-    }
-}
-
-fn test() {
+fn test(vga: &mut crate::vga::Vga<crate::vga::Idle>) {
     let mut arena = unsafe {
         Arena::from_pointers(null_mut(), null_mut())
     };
     let bitmap = arena.alloc(Bitmap1::new_in(&arena, 800, 600, 0, None))
         .unwrap();
+
+    vga.with_raster(
+        |ln, ctx| bitmap.rasterize(ln, ctx),
+        |vga| {
+            // do the stuff
+        },
+    );
 
     drop(bitmap);
 

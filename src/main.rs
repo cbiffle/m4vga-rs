@@ -12,7 +12,6 @@ extern crate panic_halt; // you can put a breakpoint on `rust_begin_unwind` to c
 mod util;
 mod copy_words;
 mod arena;
-mod rast;
 mod vga;
 mod font_10x16;
 

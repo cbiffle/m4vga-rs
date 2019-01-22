@@ -32,7 +32,22 @@ pub enum Ready {}
 
 static RASTER: rast::IRef = rast::IRef::new();
 
+impl<T> Vga<T> {
+    /// Busy-waits for the transition from active video to vertical blank.
+    /// Because this waits for the *transition*, if you call this *during*
+    /// vblank it will wait for an entire frame.
+    pub fn sync_to_vblank(&self) {
+        unimplemented!()
+    }
+}
+
 impl Vga<Idle> {
+    /// Provides `rast` to the driver interrupt handler as the raster callback,
+    /// and executes `scope`. When `scope` returns, `rast` is revoked. Note that
+    /// this may require busy-waiting until the end of active video.
+    ///
+    /// During the execution of `scope` the application has access to the driver
+    /// in a different state, `Vga<Ready>`, which exposes additional operations.
     pub fn with_raster<R>(&mut self,
                           mut rast: impl for<'c> FnMut(usize, &'c mut RasterCtx)
                                          + Send,
@@ -40,9 +55,8 @@ impl Vga<Idle> {
         -> R
     {
         RASTER.donate(&mut rast, || {
-        });
-        
-        unimplemented!()
+            scope(&mut Vga(PhantomData))
+        })
     }
 }
 
