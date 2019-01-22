@@ -16,12 +16,45 @@ mod vga;
 mod font_10x16;
 
 use cortex_m::asm;
-use cortex_m_rt::entry;
+use cortex_m_rt::{entry, pre_init};
 use stm32f4;
+
+use stm32f4::stm32f407 as device;
+
+#[pre_init]
+unsafe fn pre_init() {
+    // GIANT WARNING LABEL
+    //
+    // This function runs before .data and .bss are initialized. Any access to a
+    // `static` is undefined behavior!
+
+    use core::sync::atomic::{fence, Ordering};
+
+    // Turn on power to the SYSCFG peripheral, which is a prerequisite to what
+    // we actually want to do.
+    let rcc = &*device::RCC::ptr();
+    rcc.apb2enr.modify(|_, w| w.syscfgen().enabled());
+
+    asm::dsb(); // ensure power's up before we try to write to it
+
+    // Remap SRAM112 to address 0.
+    let syscfg = &*device::SYSCFG::ptr();
+    syscfg.memrm.write(|w| w.mem_mode().bits(0b11));
+
+    // Now, please.
+    asm::dsb();
+    asm::isb();
+}
 
 #[entry]
 fn main() -> ! {
-    asm::nop(); // To not have main optimize to abort in release mode, remove when you add code
+    let cp = cortex_m::peripheral::Peripherals::take().unwrap();
+
+    {
+        // Enable faults, so they don't immediately escalate to HardFault.
+        let shcsr = cp.SCB.shcrs.read();
+        unsafe { cp.SCB.shcrs.write(shcsr | (0b111 << 16)) }
+    }
 
     loop {
         // your code goes here
