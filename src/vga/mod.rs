@@ -1,16 +1,68 @@
+pub mod rast;
+
 use stm32f4::stm32f407 as device;
 use cortex_m::peripheral::scb::SystemHandler;
+use core::marker::PhantomData;
+use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+use core::cell::UnsafeCell;
+use core::ptr::NonNull;
 
-pub struct Band {
-    rasterizer_idx: usize,
-    line_count: usize,
-    next_idx: usize,
+use crate::util::spin_lock::SpinLock;
+
+use self::rast::RasterCtx;
+
+pub type Pixel = u8;
+
+pub const MAX_PIXELS_PER_LINE: usize = 800;
+
+#[derive(Copy, Clone, Debug)]
+pub enum NextFrame {
+    Same,
+    Release,
 }
 
-pub struct Vga {
+#[derive(Debug)]
+pub struct Vga<MODE>(PhantomData<MODE>);
+
+#[derive(Debug)]
+pub enum Idle {}
+
+#[derive(Debug)]
+pub enum Ready {}
+
+static RASTER: rast::IRef = rast::IRef::new();
+
+impl Vga<Idle> {
+    pub fn with_raster<R>(&mut self,
+                          mut rast: impl for<'c> FnMut(usize, &'c mut RasterCtx)
+                                         + Send,
+                          scope: impl FnOnce(&mut Vga<Ready>) -> R)
+        -> R
+    {
+        RASTER.donate(&mut rast, || {
+        });
+        
+        unimplemented!()
+    }
 }
 
-impl Vga {
+impl Vga<Ready> {
+    /// Enables video output. This is not synchronized and can happen in the
+    /// middle of the frame; if that bothers you, synchronize with vblank.
+    pub fn video_on(&mut self) {}
+}
+
+fn a_test(vga: &mut Vga<Idle>) -> ! {
+    let mut color = 0;
+    vga.with_raster(
+        |ln, rc| {
+            rast::solid_color_fill(ln, rc, 800, color);
+            color = color.wrapping_add(1);
+        },
+        |vga| {
+            loop { }
+        },
+    )
 }
 
 fn init() {

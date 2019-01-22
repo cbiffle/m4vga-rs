@@ -13,6 +13,10 @@ panic-halt = "0.2.0"
 #stm32f4xx-hal = "0.2.4"
 #stm32f407g-disc = "0.1.2"
 
+[dependencies.scopeguard]
+default-features = false
+version = "1.0"
+
 [dependencies.stm32f4]
 default-features = false
 features = ["rt", "stm32f407"]

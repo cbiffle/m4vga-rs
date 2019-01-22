@@ -9,6 +9,7 @@ extern crate panic_halt; // you can put a breakpoint on `rust_begin_unwind` to c
 // extern crate panic_itm; // logs messages over ITM; requires ITM support
 // extern crate panic_semihosting; // logs messages to the host stderr; requires a debugger
 
+mod util;
 mod copy_words;
 mod arena;
 mod rast;
