@@ -48,7 +48,7 @@ unsafe fn pre_init() {
 
 #[entry]
 fn main() -> ! {
-    let cp = cortex_m::peripheral::Peripherals::take().unwrap();
+    let mut cp = cortex_m::peripheral::Peripherals::take().unwrap();
 
     {
         // Enable faults, so they don't immediately escalate to HardFault.
@@ -56,7 +56,23 @@ fn main() -> ! {
         unsafe { cp.SCB.shcrs.write(shcsr | (0b111 << 16)) }
     }
 
-    loop {
-        // your code goes here
-    }
+    let p = device::Peripherals::take().unwrap();
+
+    let mut vga = vga::init(&mut cp, &p);
+
+    vga.with_raster(
+        |_, ctx| {
+            let mut pixel = 0;
+            for t in &mut ctx.target[0..800] {
+                *t = pixel;
+                pixel ^= 0xFF;
+            }
+            ctx.target_range = 0..800;
+            ctx.repeat_lines = 599;
+        },
+        |vga| {
+            vga.video_on();
+            loop {}
+        },
+    )
 }

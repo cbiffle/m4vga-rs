@@ -79,10 +79,10 @@ fn a_test(vga: &mut Vga<Idle>) -> ! {
     )
 }
 
-fn init() {
-    let mut cp = device::CorePeripherals::take().unwrap();
-    let p = device::Peripherals::take().unwrap();
-
+pub fn init(cp: &mut device::CorePeripherals,
+            p: &device::Peripherals)
+    -> Vga<Idle>
+{
     // Turn on I/O compensation cell to reduce noise on power supply.
     p.RCC.apb2enr.modify(|_, w| w.syscfgen().enabled());
     // TODO: CMPCR seems to be modeled as read-only (?)
@@ -110,10 +110,18 @@ fn init() {
     // Configure interrupt priorities. This is safe because we haven't enabled
     // interrupts yet.
     unsafe {
-        cp.NVIC.set_priority(device::Interrupt::TIM4, 0);
-        cp.NVIC.set_priority(device::Interrupt::TIM3, 16);
+        cp.NVIC.set_priority(device::Interrupt::TIM4, 0x00);
+        cp.NVIC.set_priority(device::Interrupt::TIM3, 0x10);
         cp.SCB.set_priority(SystemHandler::SysTick, 0xFF);
     }
 
+    // Enable Flash cache and prefetching to reduce jitter.
+    p.FLASH.acr.modify(|_, w| w
+                       .dcen().enabled()
+                       .icen().enabled()
+                       .prften().enabled());
+
     // TODO more
+
+    Vga(PhantomData)
 }
