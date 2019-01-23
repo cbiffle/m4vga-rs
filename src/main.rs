@@ -58,7 +58,18 @@ fn main() -> ! {
 
     let p = device::Peripherals::take().unwrap();
 
-    let mut vga = vga::init(&mut cp, &p);
+    let mut vga = vga::init(
+        &mut cp,
+        &p.RCC,
+        &p.FLASH,
+        &p.DBG,
+        p.GPIOB,
+        p.GPIOE,
+        p.TIM1,
+        p.TIM3,
+        p.TIM4,
+        p.DMA2,
+    );
 
     vga.with_raster(
         |_, ctx| {

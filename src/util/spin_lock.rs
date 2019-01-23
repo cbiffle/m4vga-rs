@@ -17,6 +17,8 @@ pub struct SpinLock<T: ?Sized> {
     contents: UnsafeCell<T>,
 }
 
+unsafe impl<T: Send + ?Sized> Sync for SpinLock<T> {}
+
 impl<T> SpinLock<T> {
     pub const fn new(contents: T) -> Self {
         SpinLock {
@@ -26,11 +28,16 @@ impl<T> SpinLock<T> {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum SpinLockError {
+    Contended,
+}
+
 impl<T: ?Sized + Send> SpinLock<T> {
-    pub fn try_lock(&self) -> Option<SpinLockGuard<T>> {
+    pub fn try_lock(&self) -> Result<SpinLockGuard<T>, SpinLockError> {
         if self.locked.swap(true, Ordering::Acquire) {
             // Old value of `true` implies the cell was already locked.
-            None
+            Err(SpinLockError::Contended)
         } else {
             // Old value of `false` means we have locked the cell!
             //
@@ -39,8 +46,8 @@ impl<T: ?Sized + Send> SpinLock<T> {
             // We return a single mutable reference. If it is dropped, the cell
             // will unlock, but not before -- until then, all attempts to
             // `try_lock` will fail.
-            Some(SpinLockGuard {
-                locked: &self.locked,
+            Ok(SpinLockGuard {
+                locked: LockBorrow(&self.locked),
                 contents: unsafe { &mut *self.contents.get() },
             })
         }
@@ -50,8 +57,26 @@ impl<T: ?Sized + Send> SpinLock<T> {
 #[must_use = "if dropped, the spinlock will immediately unlock"]
 #[derive(Debug)]
 pub struct SpinLockGuard<'a, T: ?Sized> {
-    locked: &'a AtomicBool,
+    locked: LockBorrow<'a>,
     contents: &'a mut T,
+}
+
+/// A reference to the `SpinLock` lock flag that releases it when dropped. This
+/// type is distinct from `SpinLockGuard` so that the latter can be consumed and
+/// reconstructed by `map` -- something that is not allowed for `Drop` types.
+#[derive(Debug)]
+struct LockBorrow<'a>(&'a AtomicBool);
+
+impl<'a, T: ?Sized> SpinLockGuard<'a, T> {
+    pub fn map<U>(orig: SpinLockGuard<'a, T>, f: impl FnOnce(&mut T) -> &mut U)
+        -> SpinLockGuard<'a, U>
+    {
+        let SpinLockGuard { locked, contents } = orig;
+        SpinLockGuard {
+            locked,
+            contents: f(contents),
+        }
+    }
 }
 
 impl<'a, T: ?Sized> core::ops::Deref for SpinLockGuard<'a, T> {
@@ -67,9 +92,8 @@ impl<'a, T: ?Sized> core::ops::DerefMut for SpinLockGuard<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized> Drop for SpinLockGuard<'a, T> {
+impl<'a> Drop for LockBorrow<'a> {
     fn drop(&mut self) {
-        let old = self.locked.swap(false, Ordering::Release);
-        debug_assert!(old)
+        self.0.store(false, Ordering::Release);
     }
 }
