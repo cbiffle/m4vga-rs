@@ -3,7 +3,7 @@ use core::mem;
 use core::ptr::null_mut;
 
 use crate::copy_words::copy_words;
-use crate::vga::rast::{Pixel, RasterCtx};
+use crate::vga::rast::{Pixel, RasterCtx, TargetBuffer};
 use crate::arena::{self, Arena};
 
 extern {
@@ -96,6 +96,7 @@ impl<'arena> Bitmap1<'arena> {
 
     fn rasterize(&self,
                  line_number: usize,
+                 target: &mut TargetBuffer,
                  ctx: &mut RasterCtx) {
         let line_number = line_number.wrapping_sub(self.top_line);
 
@@ -121,7 +122,7 @@ impl<'arena> Bitmap1<'arena> {
                 unpack_1bpp_overlay_impl(
                     &front[self.words_per_line * line_number],
                     &self.clut,
-                    ctx.target.as_mut_ptr(),
+                    target.as_mut_ptr(),
                     self.words_per_line as u32,
                     &bg[0],
                 );
@@ -131,7 +132,7 @@ impl<'arena> Bitmap1<'arena> {
                 unpack_1bpp_impl(
                     &front[self.words_per_line * line_number],
                     &self.clut,
-                    ctx.target.as_mut_ptr(),
+                    target.as_mut_ptr(),
                     self.words_per_line as u32,
                 );
             }
@@ -149,7 +150,7 @@ fn test(vga: &mut crate::vga::Vga<crate::vga::Idle>) {
         .unwrap();
 
     vga.with_raster(
-        |ln, ctx| bitmap.rasterize(ln, ctx),
+        |ln, tgt, ctx| bitmap.rasterize(ln, tgt, ctx),
         |vga| {
             // do the stuff
         },

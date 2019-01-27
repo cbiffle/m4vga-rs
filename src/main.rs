@@ -9,6 +9,9 @@ extern crate panic_halt; // you can put a breakpoint on `rust_begin_unwind` to c
 // extern crate panic_itm; // logs messages over ITM; requires ITM support
 // extern crate panic_semihosting; // logs messages to the host stderr; requires a debugger
 
+mod armv7m;
+mod stm32;
+
 mod util;
 mod copy_words;
 mod arena;
@@ -56,13 +59,22 @@ fn main() -> ! {
         unsafe { cp.SCB.shcrs.write(shcsr | (0b111 << 16)) }
     }
 
+    unsafe {
+        // Use lazy context stacking for FP, so that we can use FP from
+        // interrupts but don't always incur an FP context save.
+        cp.FPU.fpccr.write((1 << 31)  // automatic save
+                           | (1 << 30)  // lazy save
+                           );
+    }
+
     let p = device::Peripherals::take().unwrap();
 
     let mut vga = vga::init(
-        &mut cp,
-        &p.RCC,
+        cp.NVIC,
+        &mut cp.SCB,
         &p.FLASH,
         &p.DBG,
+        p.RCC,
         p.GPIOB,
         p.GPIOE,
         p.TIM1,
@@ -72,9 +84,9 @@ fn main() -> ! {
     );
 
     vga.with_raster(
-        |_, ctx| {
+        |_, tgt, ctx| {
             let mut pixel = 0;
-            for t in &mut ctx.target[0..800] {
+            for t in &mut tgt[0..800] {
                 *t = pixel;
                 pixel ^= 0xFF;
             }

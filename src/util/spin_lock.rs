@@ -68,6 +68,8 @@ pub struct SpinLockGuard<'a, T: ?Sized> {
 struct LockBorrow<'a>(&'a AtomicBool);
 
 impl<'a, T: ?Sized> SpinLockGuard<'a, T> {
+    /// Replaces a guard of `T` with a guard of some portion of `T`. This is
+    /// essentially a projection operation. The original guard is lost.
     pub fn map<U>(orig: SpinLockGuard<'a, T>, f: impl FnOnce(&mut T) -> &mut U)
         -> SpinLockGuard<'a, U>
     {

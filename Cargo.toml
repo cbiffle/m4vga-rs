@@ -22,6 +22,9 @@ default-features = false
 features = ["rt", "stm32f407"]
 version = "0.5.0"
 
+[patch.crates-io]
+svd2rust = { git = "https://github.com/cbiffle/svd2rust.git", branch = "copy-interrupt" }
+
 # Uncomment for the panic example.
 # panic-itm = "0.4.0"
 

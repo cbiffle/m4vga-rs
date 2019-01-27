@@ -1,15 +1,20 @@
 pub mod rast;
 
 use stm32f4::stm32f407 as device;
+use cortex_m::peripheral as cm;
+
 use cortex_m::peripheral::scb::SystemHandler;
+
 use core::marker::PhantomData;
-use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use core::cell::UnsafeCell;
 use core::ptr::NonNull;
 
+use crate::armv7m::*;
+use crate::stm32::copy_interrupt; // grrrr
 use crate::util::spin_lock::{SpinLock, SpinLockGuard};
 
-use self::rast::RasterCtx;
+use self::rast::{RasterCtx, TargetBuffer};
 
 pub type Pixel = u8;
 
@@ -17,25 +22,108 @@ pub const MAX_PIXELS_PER_LINE: usize = 800;
 
 const SHOCK_ABSORBER_SHIFT_CYCLES: u32 = 20;
 
+/// Records when a driver instance has been initialized. This is only allowed to
+/// happen once at the moment because we don't have perfect teardown code.
 static mut DRIVER_INIT_FLAG: AtomicBool = AtomicBool::new(false);
 
-#[derive(Copy, Clone, Debug)]
-#[repr(align(4))]
-struct WordAligned<T>(T);
+/// Equivalent of `rast::TargetBuffer`, but as words to ensure alignment for
+/// certain of our high-throughput routines.
+type WorkingBuffer = [u32; WORKING_BUFFER_SIZE];
+const WORKING_BUFFER_SIZE: usize = rast::TARGET_BUFFER_SIZE / 4;
 
+/// Casting from a word-aligned working buffer to a byte-aligned pixel buffer.
+fn working_buffer_as_u8(words: &mut WorkingBuffer) -> &mut rast::TargetBuffer {
+    // Safety: these structures have exactly the same shape, and when we use it
+    // as a buffer of u32, we're doing it only as a fast way of moving u8. The
+    // main portability risk here is endianness, but so be it.
+    unsafe {
+        core::mem::transmute(words)
+    }
+}
+
+/// State used by the raster maintenance (PendSV) ISR.
+struct RasterState {
+    /// Rasterization working buffer in closely-coupled RAM. During
+    /// rasterization, the CPU can scribble into this buffer freely without
+    /// interfering with any ongoing DMA transfer.
+    working_buffer: &'static mut WorkingBuffer,
+
+    /// Flag indicating that a new scanline has been written to `working_buffer`
+    /// since the last scan buffer update, and so data needs to be copied.
+    update_scan_buffer: bool,
+
+    /// Rasterizer parameters for the contents of `working_buffer`.
+    raster_ctx: RasterCtx,
+}
+
+static mut RASTER_STATE: SpinLock<RasterState> = SpinLock::new(RasterState {
+    working_buffer: unsafe { &mut GLOBAL_WORKING_BUFFER },
+    update_scan_buffer: false,
+    raster_ctx: RasterCtx {
+        cycles_per_pixel: 4,
+        repeat_lines: 0,
+        target_range: 0..0,
+    },
+});
+
+/// Rasterization working buffer in closely-coupled RAM. During rasterization,
+/// the CPU can scribble into this buffer freely without interfering with any
+/// ongoing DMA transfer.
+///
+/// A reference to this is stashed in `RASTER_STATE`; you don't want to touch
+/// this directly. (I'd make it an anonymous array but that would prevent me
+/// from using `link_section`.)
 #[link_section = ".local_ram"]
-static mut GLOBAL_WORKING_BUFFER:
-    WordAligned<[Pixel; rast::TARGET_BUFFER_SIZE]> =
-    WordAligned([0; rast::TARGET_BUFFER_SIZE]);
+static mut GLOBAL_WORKING_BUFFER: WorkingBuffer = [0; WORKING_BUFFER_SIZE];
 
+/// Rasterization scanout buffer in the smaller AHB-attached SRAM. This is the
+/// source for scanout DMA.
+///
+/// Written in PendSV by the `copy_words` routine, which transfers data from
+/// `GLOBAL_WORKING_BUFFER`.
+///
+/// Read asynchronously by DMA during scanout.
 #[link_section = ".scanout_ram"]
-static mut GLOBAL_SCANOUT_BUFFER:
-    WordAligned<[Pixel; rast::TARGET_BUFFER_SIZE]> =
-    WordAligned([0; rast::TARGET_BUFFER_SIZE]);
+static mut GLOBAL_SCANOUT_BUFFER: WorkingBuffer = [0; WORKING_BUFFER_SIZE];
+
+/// Groups parameters passed from PendSV to HState ISR, describing the next DMA
+/// transfer.
+struct NextTransfer {
+    /// Bitwise representation of the DMA SxCR register value that starts the
+    /// transfer.
+    ///
+    /// TODO: this should probably be `device::dma2::s5cr::W`, but that type has
+    /// no `const` constructor for use in a static, and is generally just a pain
+    /// in the ass to work with, so `u32` it is.
+    dma_cr_bits: u32,
+    /// Whether to use timer-mediated DMA to decrease horizontal resolution.
+    use_timer: bool,
+}
+
+/// Parameters passed from PendSV to HState ISR.
+static NEXT_XFER: SpinLock<NextTransfer> = SpinLock::new(NextTransfer {
+    dma_cr_bits: 0,
+    use_timer: false,
+});
+
+/// Description of the last render into the working buffer.
+///
+/// Written:
+/// - At PendSV when rasterization completes.
+///
+/// Read:
+/// - At PendSV to determine how much data to move from working to scanout.
+/// - At PendSV to configure next DMA transfer.
+/// - At PendSV to decide whether to repeat or re-rasterize.
+static LAST_RENDER: SpinLock<RasterCtx> = SpinLock::new(RasterCtx {
+    cycles_per_pixel: 4,
+    repeat_lines: 0,
+    target_range: 0..0,
+});
 
 #[derive(Copy, Clone, Debug)]
 pub struct Timing {
-    // TODO clock config
+    clock_config: ClockConfig,
 
     /// Number of additional AHB cycles per pixel clock cycle. The driver uses a
     /// minimum of 4 cycles per pixel; this field adds to that. Larger values
@@ -72,19 +160,45 @@ pub struct Timing {
     vsync_polarity: Polarity,
 }
 
+const MIN_CYCLES_PER_PIXEL: usize = 4;
+
+impl Timing {
+    pub fn cycles_per_pixel(&self) -> usize {
+        self.add_cycles_per_pixel + MIN_CYCLES_PER_PIXEL
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
+pub struct ClockConfig {
+    crystal_hz: f32,
+    crystal_divisor: usize,
+    vco_multiplier: usize,
+    general_divisor: usize,
+    pll48_divisor: usize,
+
+    ahb_divisor: usize,
+    apb1_divisor: usize,
+    apb2_divisor: usize,
+
+    flash_latency: usize,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Polarity {
     Positive = 0,
     Negative = 1,
 }
 
 pub struct Vga<MODE> {
+    rcc: device::RCC,
     gpiob: device::GPIOB,
     gpioe: device::GPIOE,
     tim1: device::TIM1,
     tim3: device::TIM3,
     tim4: device::TIM4,
     dma2: device::DMA2,
+
+    nvic: cm::NVIC,  // TODO probably should not own this
 
     _marker: PhantomData<MODE>,
 }
@@ -98,15 +212,9 @@ pub enum Ready {}
 static RASTER: rast::IRef = rast::IRef::new();
 
 impl<T> Vga<T> {
-    fn working_buffer(&self) -> &'static mut [Pixel; rast::TARGET_BUFFER_SIZE] {
-        unsafe {
-            &mut GLOBAL_WORKING_BUFFER.0
-        }
-    }
-
     fn scan_buffer(&self) -> &'static mut [Pixel; rast::TARGET_BUFFER_SIZE] {
         unsafe {
-            &mut GLOBAL_SCANOUT_BUFFER.0
+            core::mem::transmute(&mut GLOBAL_SCANOUT_BUFFER)
         }
     }
 
@@ -174,7 +282,9 @@ impl Vga<Idle> {
     /// During the execution of `scope` the application has access to the driver
     /// in a different state, `Vga<Ready>`, which exposes additional operations.
     pub fn with_raster<R>(&mut self,
-                          mut rast: impl for<'c> FnMut(usize, &'c mut RasterCtx)
+                          mut rast: impl for<'c> FnMut(usize,
+                                                       &'c mut TargetBuffer,
+                                                       &'c mut RasterCtx)
                                          + Send,
                           scope: impl FnOnce(&mut Vga<Ready>) -> R)
         -> R
@@ -193,8 +303,18 @@ impl Vga<Idle> {
         self.sync_off();
 
         // Place the horizontal timers in reset, disabling interrupts.
-        //disable_h_timer(ApbPeripheral::tim4, Interrupt::tim4);
-        //disable_h_timer(ApbPeripheral::tim3, Interrupt::tim3);
+        disable_h_timer(
+            &mut self.nvic,
+            &device::Interrupt::TIM4, 
+            &self.rcc,
+            |w| w.tim4rst().set_bit(),
+        );
+        disable_h_timer(
+            &mut self.nvic,
+            &device::Interrupt::TIM3,
+            &self.rcc,
+            |w| w.tim3rst().set_bit(),
+        );
 
         // Busy-wait for pending DMA to complete.
         while self.dma2.s5cr.read().en().bit_is_set() {
@@ -205,8 +325,24 @@ impl Vga<Idle> {
         //rcc.configure_clocks(timing.clock_config);
 
         // Configure TIM3/4 for horizontal sync generation.
-        //configure_h_timer(timing, ApbPeripheral::tim3, tim3);
-        //configure_h_timer(timing, ApbPeripheral::tim4, tim4);
+        configure_h_timer(
+            timing,
+            &mut self.nvic,
+            &device::Interrupt::TIM3,
+            &self.tim3,
+            &self.rcc,
+            |w| w.tim3en().set_bit(),
+            |w| w.tim3rst().set_bit(),
+        );
+        configure_h_timer(
+            timing,
+            &mut self.nvic,
+            &device::Interrupt::TIM4,
+            &self.tim4,
+            &self.rcc,
+            |w| w.tim4en().set_bit(),
+            |w| w.tim4rst().set_bit(),
+        );
 
         // Adjust tim3's CC2 value back in time.
         self.tim3.ccr2.modify(|r, w| w.ccr2().bits(
@@ -242,41 +378,35 @@ impl Vga<Idle> {
             Polarity::Negative => self.gpiob.bsrr.write(|w| w.bs7().set_bit()),
         }
 
+        /*
+        TODO: since I've assigned ownership of the working buffer to the PendSV
+        ISR, we can't do this here. I think this is okay, since it would only
+        catch bugs in the very first rasterized scanline anyway.
+
         // Scribble over working buffer to help catch bugs.
         for pair in self.working_buffer().chunks_exact_mut(2) {
             pair[0] = 0xFF;
             pair[1] = 0x00;
         }
+        */
 
         // Blank the final word of the scan buffer.
-        for b in &mut self.scan_buffer()[timing.video_pixels .. timing.video_pixels + 4] {
+        for b in &mut self.scan_buffer()
+                [timing.video_pixels .. timing.video_pixels + 4] {
             *b = 0
         }
 
-        /*
+        // Set up global state.
+        LINE.store(0, Ordering::Relaxed);
+        *TIMING.try_lock().unwrap() = Some(*timing);
+        VERT_STATE.store(VState::Blank as usize, Ordering::Relaxed);
 
-  // Set up global state.
-  current_line = 0;
-  current_timing = timing;
-  state = State::blank;
-  working_buffer_shape = {
-    .offset = 0,
-    .length = 0,
-    .cycles_per_pixel = timing.cycles_per_pixel,
-    .repeat_lines = 0,
-  };
-  next_use_timer = false;
+        // Start TIM3, which starts TIM4.
+        enable_irq(&mut self.nvic, device::Interrupt::TIM3);
+        enable_irq(&mut self.nvic, device::Interrupt::TIM4);
+        self.tim3.cr1.modify(|_, w| w.cen().set_bit());
 
-  scan_buffer_needs_update = false;
-
-  // Start TIM3, which starts TIM4.
-  enable_irq(Interrupt::tim3);
-  enable_irq(Interrupt::tim4);
-  tim3.write_cr1(tim3.read_cr1().with_cen(true));
-
-  sync_on();
-  */
-
+        self.sync_on();
     }
 }
 
@@ -322,8 +452,8 @@ impl Vga<Ready> {
 fn a_test(vga: &mut Vga<Idle>) -> ! {
     let mut color = 0;
     vga.with_raster(
-        |ln, rc| {
-            rast::solid_color_fill(ln, rc, 800, color);
+        |ln, tgt, rc| {
+            rast::solid_color_fill(ln, tgt, rc, 800, color);
             color = color.wrapping_add(1);
         },
         |vga| {
@@ -332,10 +462,11 @@ fn a_test(vga: &mut Vga<Idle>) -> ! {
     )
 }
 
-pub fn init(cp: &mut device::CorePeripherals,
-            rcc: &device::RCC,
+pub fn init(mut nvic: cm::NVIC,
+            scb: &mut cm::SCB,
             flash: &device::FLASH,
             dbg: &device::DBG,
+            rcc: device::RCC,
             gpiob: device::GPIOB,
             gpioe: device::GPIOE,
             tim1: device::TIM1,
@@ -377,9 +508,9 @@ pub fn init(cp: &mut device::CorePeripherals,
     // Configure interrupt priorities. This is safe because we haven't enabled
     // interrupts yet.
     unsafe {
-        cp.NVIC.set_priority(device::Interrupt::TIM4, 0x00);
-        cp.NVIC.set_priority(device::Interrupt::TIM3, 0x10);
-        cp.SCB.set_priority(SystemHandler::SysTick, 0xFF);
+        nvic.set_priority(device::Interrupt::TIM4, 0x00);
+        nvic.set_priority(device::Interrupt::TIM3, 0x10);
+        scb.set_priority(SystemHandler::SysTick, 0xFF);
     }
 
     // Enable Flash cache and prefetching to reduce jitter.
@@ -397,20 +528,20 @@ pub fn init(cp: &mut device::CorePeripherals,
                               .dbg_tim1_stop().set_bit());
 
     let vga = Vga {
+        rcc,
         gpiob,
         gpioe,
         tim1,
         tim3,
         tim4,
         dma2,
+        nvic,
         _marker: PhantomData,
     };
     vga.sync_off();
     vga.video_off();
     vga
 }
-
-static SHOCK_TIMER: SpinLock<Option<device::TIM3>> = SpinLock::new(None);
 
 /// Pattern for acquiring hardware resources loaned to an ISR in a static.
 ///
@@ -432,8 +563,501 @@ fn acquire_hw<T: Send>(lock: &SpinLock<Option<T>>) -> SpinLockGuard<T> {
     )
 }
 
+static SHOCK_TIMER: SpinLock<Option<device::TIM3>> = SpinLock::new(None);
+
+/// Entry point for the shock absorber ISR.
+///
+/// The purpose of the shock absorber is to idle the CPU, stopping I/D fetches
+/// and lower-priority interrupts, until a higher-priority interrupt arrives.
+/// This ensures that the interrupt latency of the higher-priority interrupt is
+/// not affected by multi-cycle bus transactions, Flash wait states, or
+/// tail-chaining.
+///
+/// Note: this is `etl_stm32f4xx_tim3_handler` in the C++.
 pub fn shock_absorber_isr() {
-    let mut tim = acquire_hw(&SHOCK_TIMER);
-    tim.sr.modify(|_, w| w.cc2if().clear_bit());
+    // Acknowledge IRQ so it doesn't re-occur.
+    acquire_hw(&SHOCK_TIMER)
+        .sr.modify(|_, w| w.cc2if().clear_bit());
+    // Idle the CPU until an interrupt arrives.
     cortex_m::asm::wfi()
+}
+
+struct HStateHw {
+    dma2: device::DMA2,
+    tim1: device::TIM1,
+    tim4: device::TIM4,
+}
+
+static HSTATE_HW: SpinLock<Option<HStateHw>> = SpinLock::new(None);
+
+/// Entry point for the horizontal timing state machine ISR.
+///
+/// Note: this is `etl_stm32f4xx_tim4_handler` in the C++.
+pub fn hstate_isr() {
+    let mut hw = acquire_hw(&HSTATE_HW);
+
+    // TODO: this appears to be the most concise way of read-modify-writing a
+    // register and saving the prior value in the current svd2rust API. Report a
+    // bug.
+    let mut sr = hw.tim4.sr.read();
+    hw.tim4.sr.write(|w| unsafe { w.bits(sr.bits()) }
+                     .cc2if().clear_bit()
+                     .cc3if().clear_bit());
+
+    if sr.cc2if().bit_is_set() {
+        // Note: we are racing PendSV end-of-rasterization for control of this
+        // lock.
+        let params = NEXT_XFER.try_lock().unwrap();
+        let dma_xfer = unsafe { core::mem::transmute(params.dma_cr_bits) };
+        start_of_active_video(
+            &hw.dma2,
+            &hw.tim1,
+            dma_xfer,
+            params.use_timer,
+        );
+    }
+
+    if sr.cc3if().bit_is_set() {
+        // end_of_active_video
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum VState {
+    Blank = 0b00,
+    Starting = 0b01,
+    Active = 0b11,
+    Finishing = 0b10,
+}
+
+impl VState {
+    fn is_displayed_state(self) -> bool {
+        (self as usize & 0b10) != 0
+    }
+
+    fn is_rendered_state(self) -> bool {
+        (self as usize & 1) != 0
+    }
+}
+
+static VERT_STATE: AtomicUsize = AtomicUsize::new(VState::Blank as usize);
+static TIMING: SpinLock<Option<Timing>> = SpinLock::new(None);
+static LINE: AtomicUsize = AtomicUsize::new(0);
+
+fn vert_state() -> VState {
+    match VERT_STATE.load(Ordering::Relaxed) {
+        0b00 => VState::Blank,
+        0b01 => VState::Starting,
+        0b11 => VState::Active,
+        _    => VState::Finishing,
+    }
+}
+
+fn start_of_active_video(dma: &device::DMA2,
+                         drq_timer: &device::TIM1,
+                         dma_xfer: device::dma2::s5cr::W,
+                         use_timer_drq: bool) {
+    if !vert_state().is_displayed_state() {
+        return
+    }
+
+    // Clear stream 5 flags. HIFCR is a write-1-to-clear register.
+    dma.hifcr.write(|w| w
+                    .cdmeif5().set_bit()
+                    .cteif5().set_bit()
+                    .chtif5().set_bit()
+                    .ctcif5().set_bit());
+
+    // Start the countdown for first DRQ, if relevant.
+    drq_timer.cr1.write(|w| w.urs().counter_only()
+                        .cen().bit(use_timer_drq));
+
+    // Configure DMA stream.
+    dma.s5cr.write(|w| { *w = dma_xfer; w });
+}
+
+/// Handler for the end-of-active-video horizontal state event.
+///
+/// Returns the number of the next scanline.
+fn end_of_active_video(drq_timer: &device::TIM1,
+                       h_timer: &device::TIM4,
+                       gpiob: &device::GPIOB,
+                       current_timing: &Timing,
+                       current_line: usize)
+    -> usize
+{
+    // The end-of-active-video (EAV) event is always significant, as it advances
+    // the line state machine and kicks off PendSV.
+
+    // Shut off TIM1; only really matters in reduced-horizontal mode.
+    drq_timer.cr1.write(|w| w.urs().counter_only()
+                        .cen().clear_bit());
+
+    // Apply timing changes requested by the last rasterizer.
+    // TODO: TIM4 CCR2 writes are unsafe, which is a bug
+    h_timer.ccr2.write(|w| unsafe {
+        w.bits(
+            (current_timing.sync_pixels
+            + current_timing.back_porch_pixels - current_timing.video_lead)
+            as u32
+            //+ working_buffer_shape.offset TODO am I implementing offset?
+        )
+    });
+
+    // Pend a PendSV to process hblank tasks.
+    cortex_m::peripheral::SCB::set_pendsv();
+
+    // We've finished this line; figure out what to do on the next one.
+    let next_line = current_line + 1;
+    let mut rollover = false;
+    if next_line == current_timing.vsync_start_line ||
+            next_line == current_timing.vsync_end_line {
+        // Either edge of vsync pulse.
+        {
+            // TODO: really unfortunate toggle code. File bug.
+            let odr = gpiob.odr.read().bits();
+            let mask = 1 << 7;
+            gpiob.bsrr.write(|w| unsafe {
+                w.bits(
+                    (!odr & mask) | ((odr & mask) << 16)
+                )
+            });
+        }
+    } else if next_line + 1 == current_timing.video_start_line {
+        // We're one line before scanout begins -- need to start rasterizing.
+        VERT_STATE.store(VState::Starting as usize, Ordering::Relaxed);
+        // TODO: used to have band-list-taken goo here. This would be an
+        // appropriate place to lock the rasterization callback for the duration
+        // of the frame, if desired.
+    } else if next_line == current_timing.video_start_line {
+        // Time to start output.  This will cause PendSV to copy rasterization
+        // output into place for scanout, and the next SAV will start DMA.
+        VERT_STATE.store(VState::Active as usize, Ordering::Relaxed);
+    } else if next_line + 1 == current_timing.video_end_line {
+        // For the final line, suppress rasterization but continue preparing
+        // previously rasterized data for scanout, and continue starting DMA in
+        // SAV.
+        VERT_STATE.store(VState::Finishing as usize, Ordering::Relaxed);
+    } else if next_line == current_timing.video_end_line {
+        // All done!  Suppress all scanout activity.
+        VERT_STATE.store(VState::Blank as usize, Ordering::Relaxed);
+        rollover = true;
+    }
+
+    if rollover { 0 } else { next_line }
+}
+
+/// Entry point for the raster maintenance ISR, invoked as PendSV.
+fn maintain_raster_isr() {
+    let hw = acquire_hw(&HSTATE_HW);
+    // Safety: RASTER_STATE is mut only because rustc is really picky about
+    // seeing uses of mut statics like GLOBAL_WORKING_BUFFER in the initializers
+    // of non-mut statics.
+    let mut state = unsafe { RASTER_STATE.try_lock() }.unwrap();
+
+    let vs = vert_state();
+
+    // First, prepare for scanout from SAV on this line.  This has two purposes:
+    // it frees up the rasterization target buffer so that we can overwrite it,
+    // and it applies pixel timing choices from the *last* rasterizer run to the
+    // scanout machine so that we can replace them as well.
+    //
+    // This writes to the scanout buffer *and* accesses AHB/APB peripherals, so
+    // it *cannot* run concurrently with scanout -- so we do it first, during
+    // hblank.
+    if vs.is_displayed_state() {
+        if state.update_scan_buffer {
+            update_scan_buffer(
+                state.raster_ctx.target_range.end,
+                &mut state.working_buffer, 
+            );
+        }
+        let (dma_cr, use_timer) = prepare_for_scanout(
+            &hw.dma2,
+            &hw.tim1,
+            &state.raster_ctx,
+        );
+        // [OX] TODO: omg there is no actual way to get the bits out of this
+        let dma_cr_bits = unsafe { core::mem::transmute(dma_cr) };
+
+        // Note: we are now racing hstate SAV for control of this lock.
+        *NEXT_XFER.try_lock().unwrap() = NextTransfer {
+            dma_cr_bits, 
+            use_timer,
+        };
+    }
+
+    // Allow the application to do additional work during what's left of hblank.
+    //vga_hblank_interrupt();
+
+    // Second, rasterize the *next* line, if there's a useful next line.
+    // Rasterization can take a while, and may run concurrently with scanout.
+    // As a result, we just stash our results in places where the *next* PendSV
+    // will find and apply them.
+    if (vs.is_rendered_state()) {
+        let state = &mut *state;
+        rasterize_next_line(
+            &*TIMING.try_lock().unwrap().as_mut().unwrap(),
+            &mut state.raster_ctx,
+            &mut state.working_buffer,
+        );
+    }
+}
+
+/// Copy the first `len_bytes` of `working` into the global scanout buffer for
+/// DMA.
+fn update_scan_buffer(len_bytes: usize,
+                      working: &mut WorkingBuffer) {
+    if len_bytes > 0 {
+        // We're going to move words, so round up to find the number of words to
+        // move.
+        //
+        // Note: the user could pass in any value for `len_bytes`, but it will
+        // get bounds-checked below when used as a slice index.
+        let count = (len_bytes + 3) / 4;
+
+        let scan = unsafe { &mut GLOBAL_SCANOUT_BUFFER };
+
+        crate::copy_words::copy_words(
+            &working[..count],
+            &mut scan[..count],
+        );
+
+        // Terminate with a word of black, to ensure that outputs return to
+        // black level for hblank.
+        scan[count] = 0;
+    }
+}
+
+fn rasterize_next_line(timing: &Timing,
+                       ctx: &mut RasterCtx,
+                       working: &mut WorkingBuffer)
+    -> bool
+{
+    let current_line = LINE.load(Ordering::Relaxed);
+    let next_line = current_line + 1;
+    let visible_line = next_line - timing.video_start_line;
+
+    if ctx.repeat_lines == 0 {
+        // Set up a default context for the rasterizer to alter if desired.
+        *ctx = RasterCtx {
+            cycles_per_pixel: timing.cycles_per_pixel(),
+            repeat_lines: 0,
+            target_range: 0..0,
+        };
+        // Invoke the rasterizer.
+        RASTER.observe(|r| r(
+                current_line,
+                working_buffer_as_u8(working),
+                ctx,
+        ));
+        true
+    } else {  // repeat_lines > 0
+        ctx.repeat_lines -= 1;
+        false
+    }
+}
+
+/// Sets up the scanout configuration. This is done well in advance of the
+/// actual start of scanout.
+///
+/// This returns the two pieces of information that are needed to trigger
+/// scanout the rest of the way: a CR value and a flag indicating whether the
+/// scanout will use a timer-generated DRQ (`true`) or run at full speed
+/// (`false`).
+fn prepare_for_scanout(dma: &device::DMA2,
+                       vtimer: &device::tim1::RegisterBlock,
+                       ctx: &RasterCtx)
+    -> (device::dma2::s5cr::W, bool)
+{
+    // Shut off the DMA stream for reconfiguration. This is a little
+    // belt-and-suspenders.
+    dma.s5cr.modify(|_, w| w.en().clear_bit());
+
+    // TODO adjust this
+    const DRQ_SHIFT_CYCLES: u32 = 2;
+
+    // TODO oxidation note: okay, the svd2rust register access operations
+    // are incredibly awkward for code like this. I'm really really tempted
+    // to fork it.
+    //
+    // The issue: I want to create a *dynamic* value to load into the DMA
+    // stream CR register *ahead of time*. And I want to do it without bit
+    // shifting and error-prone offset constants.
+    //
+    // Notes below tagged with [OX].
+
+    // [OX] so we can't have a dma_xfer_common constant like the C++ does,
+    // because *none* of the register manipulation operations are const.
+    // Instead, let's roll one here and hope the compiler figures out how to
+    // optimize it :-(
+
+    // Build the CR value we'll use to start the transfer, so that we don't
+    // have to do it then -- which would increase IRQ-to-transfer latency.
+
+    // [OX] First: all of this code is statically specialized for stream 5.
+    // That's ridiculous. All streams are identical. But look at the type:
+    let mut xfer = device::dma2::s5cr::W::reset_value();
+    // [OX] can't do these alterations in the same line as the declaration
+    // above, because they pass references around instead of W being a
+    // simple value type, and it's thus treated as a temporary and freed.
+    xfer
+        .chsel().bits(6)
+        .pl().very_high()
+        .pburst().single()
+        .mburst().single()
+        .en().enabled();
+
+    let length = ctx.target_range.end - ctx.target_range.start;
+
+    if ctx.cycles_per_pixel > 4 {
+        // Adjust reload frequency of TIM1 to accomodate desired pixel clock.
+        // (ARR value is period - 1.)
+        let reload = (ctx.cycles_per_pixel - 1) as u32;
+        vtimer.arr.write(|w| unsafe {
+            // TODO: ARR unsafe? BUG
+            w.bits(reload)
+        });
+        // Force an update to reset the timer state.
+        vtimer.egr.write(|w| w.ug().set_bit());
+        // Configure the timer as *almost* ready to produce a DRQ, less a small
+        // value (fudge factor).  Gotta do this after the update event, above,
+        // because that clears CNT.
+        vtimer.cnt.write(|w| unsafe {
+            w.bits(reload - DRQ_SHIFT_CYCLES)
+        });
+        vtimer.sr.reset();
+
+        dma.s5par.write(|w| unsafe {
+            // Okay, this is legitimately unsafe. ;-)
+            w.bits(0x40021015)  // High byte of GPIOE ODR (hack hack)
+        });
+        dma.s5m0ar.write(|w| unsafe {
+            w.bits(&GLOBAL_SCANOUT_BUFFER as *const u32 as u32)
+        });
+
+        // The number of bytes read must exactly match the number of bytes
+        // written, or the DMA controller will freak out.  Thus, we must adapt
+        // the transfer size to the number of bytes transferred. The padding in
+        // each case is because we want to send (at least) one byte of black
+        // after any scanline.
+        match length & 3 {
+            0 => {
+                xfer.msize().word();
+                dma.s5ndtr.write(|w| w.ndt().bits(length as u16 + 4));
+            }
+            2 => {
+                xfer.msize().half_word();
+                dma.s5ndtr.write(|w| w.ndt().bits(length as u16 + 2));
+            }
+            _ => {
+                xfer.msize().byte();
+                dma.s5ndtr.write(|w| w.ndt().bits(length as u16 + 1));
+            }
+        }
+
+        xfer.dir().memory_to_peripheral()
+            .minc().clear_bit()
+            .psize().byte()
+            .pinc().clear_bit();
+       
+        (xfer, true)
+    } else {
+        // Note that we're using memory as the peripheral side.
+        // This DMA controller is a little odd.
+        dma.s5par.write(|w| unsafe {
+            w.bits(&GLOBAL_SCANOUT_BUFFER as *const u32 as u32)
+        });
+        dma.s5m0ar.write(|w| unsafe {
+            // Okay, this is legitimately unsafe. ;-)
+            w.bits(0x40021015)  // High byte of GPIOE ODR (hack hack)
+        });
+
+        // The number of bytes read must exactly match the number of bytes
+        // written, or the DMA controller will freak out.  Thus, we must adapt
+        // the transfer size to the number of bytes transferred. The padding in
+        // each case is because we want to send (at least) one byte of black
+        // after any scanline.
+        match length & 3 {
+            0 => {
+                xfer.psize().word();
+                dma.s5ndtr.write(|w| w.ndt().bits(length as u16 / 4 + 1));
+            }
+            2 => {
+                xfer.psize().half_word();
+                dma.s5ndtr.write(|w| w.ndt().bits(length as u16 / 2 + 1));
+            }
+            _ => {
+                xfer.psize().byte();
+                dma.s5ndtr.write(|w| w.ndt().bits(length as u16 + 1));
+            }
+        }
+
+        xfer
+            .dir().memory_to_memory()
+            .pinc().set_bit()
+            .msize().byte()
+            .minc().set_bit();
+
+        (xfer, false)
+    }
+}
+
+fn disable_h_timer(nvic: &mut cortex_m::peripheral::NVIC,
+                   i: &device::Interrupt,
+                   rcc: &device::RCC,
+                   reset: impl FnOnce(&mut device::rcc::apb1rstr::W)
+                               -> &mut device::rcc::apb1rstr::W) {
+    disable_irq(nvic, copy_interrupt(i));
+    rcc.apb1rstr.modify(|_, w| reset(w));
+    cortex_m::asm::dsb();
+    clear_pending_irq(copy_interrupt(i));
+}
+
+fn configure_h_timer(timing: &Timing,
+                     nvic: &mut cortex_m::peripheral::NVIC,
+                     i: &device::Interrupt,
+                     tim: &device::tim3::RegisterBlock,
+                     rcc: &device::RCC,
+                     enable_clock: impl FnOnce(&mut device::rcc::apb1enr::W)
+                               -> &mut device::rcc::apb1enr::W,
+                     leave_reset: impl FnOnce(&mut device::rcc::apb1rstr::W)
+                               -> &mut device::rcc::apb1rstr::W) {
+    rcc.apb1enr.modify(|_, w| enable_clock(w));
+    rcc.apb1rstr.modify(|_, w| leave_reset(w));
+
+    // Configure the timer to count in pixels.  These timers live on APB1.
+    // Like all APB timers they get their clocks doubled at certain APB
+    // multipliers.
+    let apb_cycles_per_pixel = if timing.clock_config.apb1_divisor > 1 {
+        (timing.cycles_per_pixel() * 2 / timing.clock_config.apb1_divisor)
+    } else {
+        timing.cycles_per_pixel()
+    };
+
+    // TODO PSC fields are defined as unsafe - BUG
+    tim.psc.write(|w| unsafe { w.bits(apb_cycles_per_pixel as u32 - 1) });
+
+    // TODO ARR fields are defined as unsafe - BUG
+    tim.arr.write(|w| unsafe { w.bits(timing.line_pixels as u32 - 1) });
+
+    tim.ccr1.write(|w| unsafe { w.bits(timing.sync_pixels as u32) });
+    tim.ccr2.write(|w| unsafe { w.bits(
+                (timing.sync_pixels
+                 + timing.back_porch_pixels - timing.video_lead) as u32
+                )});;
+    tim.ccr3.write(|w| unsafe { w.bits(
+                (timing.sync_pixels
+                 + timing.back_porch_pixels + timing.video_pixels) as u32
+                )});
+
+    tim.ccmr1_output.write(|w| {
+        unsafe { w.oc1m().bits(0b110); }  // PWM1 TODO
+        unsafe { w.cc1s().bits(0b00); } // output TODO
+        w
+    });
+
+    tim.ccer.write(|w| w
+                   .cc1e().set_bit()
+                   .cc1p().bit(timing.hsync_polarity == Polarity::Negative));
 }

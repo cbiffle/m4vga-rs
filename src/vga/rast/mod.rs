@@ -8,6 +8,7 @@ use scopeguard::defer;
 use super::Pixel;
 
 pub const TARGET_BUFFER_SIZE: usize = super::MAX_PIXELS_PER_LINE + 32;
+pub type TargetBuffer = [Pixel; TARGET_BUFFER_SIZE];
 
 /// Rasterization code that can be given to the driver and run from interrupt
 /// context to fill in a scan buffer.
@@ -80,10 +81,6 @@ pub struct RasterCtx {
     /// Setting `repeat_lines` to a non-zero value skips calling the raster
     /// callback for that many lines, which can be used to save compute.
     pub repeat_lines: usize,
-    /// Rasterization target. Provided by the driver for the raster callback to
-    /// scribble in. Output can appear anywhere within the array, but its extent
-    /// should be reflected in `target_range` when the callback returns.
-    pub target: &'static mut [Pixel; TARGET_BUFFER_SIZE],
     /// Rasterization range within `target`. The range is *empty* when the
     /// callback starts! To show any actual video, the callback *must* replace
     /// it with the range of valid pixels in `target`.
@@ -95,10 +92,11 @@ pub struct RasterCtx {
 }
 
 pub fn solid_color_fill(_line_number: usize,
+                        target: &mut TargetBuffer,
                         ctx: &mut RasterCtx,
                         width: usize,
                         fill: Pixel) {
-    ctx.target[0] = fill;               // Same color.
+    target[0] = fill;               // Same color.
     ctx.target_range = 0..1;            // One pixel.
     ctx.cycles_per_pixel *= width;      // Stretched across the whole line.
     ctx.repeat_lines = 1000;            // And don't ask again.
@@ -165,7 +163,9 @@ impl IRef {
                               val: &'env mut F,
                               scope: impl FnOnce() -> R)
         -> R
-    where F: for<'isr> FnMut(usize, &'isr mut RasterCtx) + Send + 'env,
+    where F: for<'isr> FnMut(usize,
+                             &'isr mut TargetBuffer,
+                             &'isr mut RasterCtx) + Send + 'env,
     {
         let r = self.state.compare_exchange(
             EMPTY,
@@ -175,7 +175,7 @@ impl IRef {
         );
         assert_eq!(r, Ok(EMPTY), "concurrent/reentrant donation to IRef");
 
-        let val: &mut (dyn FnMut(_, _) + Send + 'env) = val;
+        let val: &mut (dyn FnMut(_, _, _) + Send + 'env) = val;
         let val: (usize, usize) = unsafe { core::mem::transmute(val) };
 
         // By placing the cell in LOADING state we now have exclusive control.
@@ -231,7 +231,9 @@ impl IRef {
     pub fn observe<R, F>(&self,
                          body: F)
         -> Option<R>
-    where F: for<'e> FnOnce(&'e mut (dyn FnMut(usize, &mut RasterCtx) + Send))
+    where F: for<'e> FnOnce(&'e mut (dyn for<'r> FnMut(usize,
+                                                       &'r mut TargetBuffer,
+                                                       &'r mut RasterCtx) + Send))
              -> R
     {
         self.state
@@ -256,7 +258,7 @@ impl IRef {
                 let r = self.contents.get();
                 // We do *not* know the correct lifetime for the &mut.  This is
                 // why the `body` closure is `for<'a>`.
-                let r: &mut (dyn for<'r> FnMut(_, &'r mut _) + Send) =
+                let r: &mut (dyn for<'r> FnMut(_, &'r mut _, &'r mut _) + Send) =
                     unsafe { core::mem::transmute(r) };
                 let result = body(r);
                 scopeguard::ScopeGuard::into_inner(poisoner);

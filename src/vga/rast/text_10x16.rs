@@ -1,7 +1,7 @@
 //! Text renderer using 10x16 pixel character cells.
 
 use crate::arena::{self, Arena};
-use crate::vga::rast::{RasterCtx, Pixel};
+use crate::vga::rast::{RasterCtx, Pixel, TargetBuffer};
 
 const GLYPH_COLS: usize = 10;
 const GLYPH_ROWS: usize = 16;
@@ -58,6 +58,7 @@ impl<'arena> Text10x16<'arena> {
 
     fn rasterize(&self,
                  line_number: usize,
+                 target: &mut TargetBuffer,
                  ctx: &mut RasterCtx) {
         let line_number = line_number - self.top_line;
 
@@ -83,22 +84,22 @@ impl<'arena> Text10x16<'arena> {
         let (x_adj, target) = if self.x_adj > 0 {
             let x_adj = self.x_adj as usize;
             let bg = (src[0] >> 8) as Pixel;
-            for t in &mut ctx.target[0..x_adj] {
+            for t in &mut target[0..x_adj] {
                 *t = bg
             }
             // Start rasterizin' after the margin.
-            (0, &mut ctx.target[x_adj .. x_adj + self.cols * GLYPH_COLS])
+            (0, &mut target[x_adj .. x_adj + self.cols * GLYPH_COLS])
         } else if self.x_adj < 0 {
             // Fill in the right margin.
             let x_adj = (-self.x_adj) as usize;
             let bg = (src[self.cols - 1] >> 8) as Pixel;
-            for t in &mut ctx.target[self.cols * GLYPH_COLS - x_adj .. self.cols * GLYPH_COLS] {
+            for t in &mut target[self.cols * GLYPH_COLS - x_adj .. self.cols * GLYPH_COLS] {
                 *t = bg
             }
             // Start rasterizin' from the left.
-            (x_adj, &mut ctx.target[.. self.cols * GLYPH_COLS])
+            (x_adj, &mut target[.. self.cols * GLYPH_COLS])
         } else {
-            (0, &mut ctx.target[.. self.cols * GLYPH_COLS])
+            (0, &mut target[.. self.cols * GLYPH_COLS])
         };
 
         debug_assert_eq!(
