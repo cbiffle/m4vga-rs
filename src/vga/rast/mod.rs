@@ -10,64 +10,6 @@ use super::Pixel;
 pub const TARGET_BUFFER_SIZE: usize = super::MAX_PIXELS_PER_LINE + 32;
 pub type TargetBuffer = [Pixel; TARGET_BUFFER_SIZE];
 
-/// Rasterization code that can be given to the driver and run from interrupt
-/// context to fill in a scan buffer.
-///
-/// All rasterizers must be `Send`, because they're created in application code
-/// but then handed to the driver to be exercised from interrupts.
-pub trait Raster: Send {
-    /// Generates a single scanline of output.
-    ///
-    /// `cycles_per_pixel` gives the current driver horizontal resolution
-    /// setting. This can be altered; the desired value needs to be returned in
-    /// the `RasterInfo`.
-    ///
-    /// `line_number` is the line number *of the display* being drawn, as
-    /// opposed to the line number of this rasterizer.
-    ///
-    /// `target` is the scanout buffer to be filled. It is slightly oversized to
-    /// make certain smooth scrolling algorithms simpler.
-    fn rasterize(&self,
-                 cycles_per_pixel: usize,
-                 line_number: usize,
-                 target: &mut [Pixel; TARGET_BUFFER_SIZE])
-        -> RasterInfo;
-}
-
-#[derive(Copy, Clone, Debug, Default)]
-pub struct RasterInfo {
-    /// Number of black pixels to the left of the line. Negative offsets shift
-    /// the start of active video earlier (closer to hsync).
-    sav_offset: i32,
-
-    /// Number of AHB cycles per pixel.
-    cycles_per_pixel: usize,
-
-    /// How many times to repeat this scanline, after the first time it is
-    /// displayed.
-    repeat_lines: usize,
-}
-
-#[derive(Clone, Debug)]
-pub struct SolidColor {
-    pub color: Pixel,
-    pub width: usize,
-}
-
-impl Raster for SolidColor {
-    fn rasterize(&self,
-                 cycles_per_pixel: usize,
-                 line_number: usize,
-                 target: &mut [Pixel; TARGET_BUFFER_SIZE])
-        -> RasterInfo
-    {
-        for dst in &mut target[0..self.width] {
-            *dst = self.color;
-        }
-        RasterInfo { cycles_per_pixel, ..RasterInfo::default() }
-    }
-}
-
 pub struct RasterCtx {
     /// Number of AHB cycles per pixel of output. Provided by the driver based
     /// on the current mode; raster callbacks can adjust to derive new modes.

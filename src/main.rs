@@ -81,7 +81,7 @@ fn main() -> ! {
         p.TIM3,
         p.TIM4,
         p.DMA2,
-    );
+    ).configure_timing(&SVGA_800_600);
 
     vga.with_raster(
         |_, tgt, ctx| {
@@ -99,3 +99,33 @@ fn main() -> ! {
         },
     )
 }
+
+static SVGA_800_600: vga::Timing = vga::Timing {
+    clock_config: vga::ClockConfig {
+        crystal_hz: 8000000.0,// external crystal Hz
+        crystal_divisor: 4,   // divide down to 2Mhz
+        vco_multiplier: 160,  // multiply up to 320MHz VCO
+        general_divisor: 2,   // divide by 2 for 160MHz CPU clock
+        pll48_divisor: 7,     // divide by 7 for 48MHz-ish SDIO clock
+        ahb_divisor: 1,       // divide CPU clock by 1 for 160MHz AHB clock
+        apb1_divisor: 4,      // divide CPU clock by 4 for 40MHz APB1 clock.
+        apb2_divisor: 2,      // divide CPU clock by 2 for 80MHz APB2 clock.
+
+        flash_latency: 5,     // 5 wait states for 160MHz at 3.3V.
+    },
+
+    add_cycles_per_pixel: 0,
+
+    line_pixels      : 1056,
+    sync_pixels      : 128,
+    back_porch_pixels: 88,
+    video_lead       : 19,
+    video_pixels     : 800,
+    hsync_polarity   : vga::Polarity::Positive,
+
+    vsync_start_line: 1,
+    vsync_end_line  : 1 + 4,
+    video_start_line: 1 + 4 + 23,
+    video_end_line  : 1 + 4 + 23 + 600,
+    vsync_polarity  : vga::Polarity::Positive,
+};

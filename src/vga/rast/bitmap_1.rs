@@ -142,7 +142,7 @@ impl<'arena> Bitmap1<'arena> {
     }
 }
 
-fn test(vga: &mut crate::vga::Vga<crate::vga::Idle>) {
+fn test(vga: &mut crate::vga::Vga<crate::vga::Sync>) {
     let mut arena = unsafe {
         Arena::from_pointers(null_mut(), null_mut())
     };

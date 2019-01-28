@@ -27,10 +27,10 @@ pub const MAX_PIXELS_PER_LINE: usize = 800;
 const SHOCK_ABSORBER_SHIFT_CYCLES: u32 = 20;
 
 struct HStateHw {
-    dma2: device::DMA2,
-    tim1: device::TIM1,
-    tim4: device::TIM4,
-    gpiob: device::GPIOB,
+    dma2: device::DMA2,     // PendSV HState
+    tim1: device::TIM1,     // PendSV HState
+    tim4: device::TIM4,     //        HState
+    gpiob: device::GPIOB,   //        HState
 }
 
 static HSTATE_HW: SpinLock<Option<HStateHw>> = SpinLock::new(None);
@@ -66,41 +66,41 @@ static NEXT_XFER: SpinLock<NextTransfer> = SpinLock::new(NextTransfer {
 
 #[derive(Copy, Clone, Debug)]
 pub struct Timing {
-    clock_config: ClockConfig,
+    pub clock_config: ClockConfig,
 
     /// Number of additional AHB cycles per pixel clock cycle. The driver uses a
     /// minimum of 4 cycles per pixel; this field adds to that. Larger values
     /// reduce both the resolution and the compute/bandwidth requirements.
-    add_cycles_per_pixel: usize,
+    pub add_cycles_per_pixel: usize,
 
     /// Total horizontal pixels per line, including blanking.
-    line_pixels: usize,
+    pub line_pixels: usize,
     /// Length of horizontal sync pulse.
-    sync_pixels: usize,
+    pub sync_pixels: usize,
     /// Number of pixels between end of sync and start of video.
-    back_porch_pixels: usize,
+    pub back_porch_pixels: usize,
     /// Fudge factor, nudging the DMA interrupt backwards in time to compensate
     /// for startup code taking non-zero time.
-    video_lead: usize,
+    pub video_lead: usize,
     /// Maximum visible pixels per line.
-    video_pixels: usize,
+    pub video_pixels: usize,
     /// Polarity of horizontal sync pulse.
-    hsync_polarity: Polarity,
+    pub hsync_polarity: Polarity,
 
     /// Scanline number of onset of vertical sync pulse, numbered from end of
     /// active video.
-    vsync_start_line: usize,
+    pub vsync_start_line: usize,
     /// Scanline number of end of vertical sync pulse, numbered from end of
     /// active video.
-    vsync_end_line: usize,
+    pub vsync_end_line: usize,
     /// Scanline number of start of active video, numbered from end of active
     /// video.
-    video_start_line: usize,
+    pub video_start_line: usize,
     /// Scanline number of end of active video, numbered from end of active
     /// video in the last frame. This is the number of lines per frame.
-    video_end_line: usize,
+    pub video_end_line: usize,
     /// Polarity of the vertical sync pulse.
-    vsync_polarity: Polarity,
+    pub vsync_polarity: Polarity,
 }
 
 const MIN_CYCLES_PER_PIXEL: usize = 4;
@@ -113,17 +113,17 @@ impl Timing {
 
 #[derive(Copy, Clone, Debug)]
 pub struct ClockConfig {
-    crystal_hz: f32,
-    crystal_divisor: usize,
-    vco_multiplier: usize,
-    general_divisor: usize,
-    pll48_divisor: usize,
+    pub crystal_hz: f32,
+    pub crystal_divisor: usize,
+    pub vco_multiplier: usize,
+    pub general_divisor: usize,
+    pub pll48_divisor: usize,
 
-    ahb_divisor: usize,
-    apb1_divisor: usize,
-    apb2_divisor: usize,
+    pub ahb_divisor: usize,
+    pub apb1_divisor: usize,
+    pub apb2_divisor: usize,
 
-    flash_latency: usize,
+    pub flash_latency: usize,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -132,61 +132,37 @@ pub enum Polarity {
     Negative = 1,
 }
 
+/// Driver state.
+///
+/// The `MODE` parameter tracks the state of the driver at compile time, and
+/// changes what operations are available.
 pub struct Vga<MODE> {
     rcc: device::RCC,
-    gpiob: device::GPIOB,
     gpioe: device::GPIOE,
-    tim1: device::TIM1,
     tim3: device::TIM3,
-    tim4: device::TIM4,
-    dma2: device::DMA2,
-
     nvic: cm::NVIC,  // TODO probably should not own this
 
-    _marker: PhantomData<MODE>,
+    mode_state: MODE,
 }
 
-#[derive(Debug)]
-pub enum Idle {}
+/// Driver mode right after initialization, but before `configure_timing`.
+pub struct Idle(HStateHw);
 
-#[derive(Debug)]
-pub enum Ready {}
+/// Driver mode once timing has been configured.
+pub struct Sync(());
+
+/// Driver mode once rasterization has been configured.
+pub struct Live(());
+
+pub trait SyncOn {}
+
+impl SyncOn for Sync {}
+impl SyncOn for Live {}
 
 static RASTER: rast::IRef = rast::IRef::new();
 
+/// Operations valid in any driver state.
 impl<T> Vga<T> {
-    /// Busy-waits for the transition from active video to vertical blank.
-    /// Because this waits for the *transition*, if you call this *during*
-    /// vblank it will wait for an entire frame.
-    pub fn sync_to_vblank(&self) {
-        unimplemented!()
-    }
-
-    pub fn sync_on(&self) {
-        // Configure PB6/PB7 for fairly sharp edges.
-        self.gpiob.ospeedr.modify(|_, w| w
-                                  .ospeedr6().high_speed()
-                                  .ospeedr7().high_speed());
-        // Disable pullups/pulldowns.
-        self.gpiob.pupdr.modify(|_, w| w
-                                .pupdr6().floating()
-                                .pupdr7().floating());
-        // Configure PB6 as AF2 and PB7 as output.
-        self.gpiob.afrl.modify(|_, w| w.afrl6().af2());
-        self.gpiob.moder.modify(|_, w| w
-                                .moder6().alternate()
-                                .moder7().output());
-    }
-
-    pub fn sync_off(&self) {
-        self.gpiob.moder.modify(|_, w| w
-                                .moder6().input()
-                                .moder7().input());
-        self.gpiob.pupdr.modify(|_, w| w
-                                .pupdr6().pull_down()
-                                .pupdr7().pull_down());
-    }
-
     /// Disables video output. This is not synchronized and can happen in the
     /// middle of the frame; if that bothers you, synchronize with vblank.
     pub fn video_off(&self) {
@@ -211,33 +187,54 @@ impl<T> Vga<T> {
     }
 }
 
-impl Vga<Idle> {
-    /// Provides `rast` to the driver interrupt handler as the raster callback,
-    /// and executes `scope`. When `scope` returns, `rast` is revoked. Note that
-    /// this may require busy-waiting until the end of active video.
-    ///
-    /// During the execution of `scope` the application has access to the driver
-    /// in a different state, `Vga<Ready>`, which exposes additional operations.
-    pub fn with_raster<R>(&mut self,
-                          mut rast: impl for<'c> FnMut(usize,
-                                                       &'c mut TargetBuffer,
-                                                       &'c mut RasterCtx)
-                                         + Send,
-                          scope: impl FnOnce(&mut Vga<Ready>) -> R)
-        -> R
-    {
-        RASTER.donate(&mut rast, || {
-            scope(unsafe { core::mem::transmute(self) })
-        })
+/// Operations valid in any driver state where sync is being generated.
+impl<T: SyncOn> Vga<T> {
+    /// Busy-waits for the transition from active video to vertical blank.
+    /// Because this waits for the *transition*, if you call this *during*
+    /// vblank it will wait for an entire frame.
+    pub fn sync_to_vblank(&self) {
+        unimplemented!()
     }
+}
 
-    /// Configures video timing. This is only available when we aren't actively
-    /// rasterizing.
-    pub fn configure_timing(&mut self, timing: &Timing) {
+fn sync_off(gpiob: &device::GPIOB) {
+    gpiob.moder.modify(|_, w| w
+                       .moder6().input()
+                       .moder7().input());
+    gpiob.pupdr.modify(|_, w| w
+                       .pupdr6().pull_down()
+                       .pupdr7().pull_down());
+}
+
+fn sync_on(gpiob: &device::GPIOB) {
+    // Configure PB6/PB7 for fairly sharp edges.
+    gpiob.ospeedr.modify(|_, w| w
+                         .ospeedr6().high_speed()
+                         .ospeedr7().high_speed());
+    // Disable pullups/pulldowns.
+    gpiob.pupdr.modify(|_, w| w
+                       .pupdr6().floating()
+                       .pupdr7().floating());
+    // Configure PB6 as AF2 and PB7 as output.
+    gpiob.afrl.modify(|_, w| w.afrl6().af2());
+    gpiob.moder.modify(|_, w| w
+                       .moder6().alternate()
+                       .moder7().output());
+}
+
+/// Operations that are only valid before timing has been configured.
+impl Vga<Idle> {
+    /// Configures video timing.
+    ///
+    /// TODO: currently there is no way to re-configure timing, but the C++
+    /// implementation supports that feature. The absence is a side effect of
+    /// the type-state encoding of Vga. Provide a replacement.
+    pub fn configure_timing(mut self, timing: &Timing) -> Vga<Sync> {
         // TODO: timing consistency asserts
 
-        self.video_off();
-        self.sync_off();
+        //TODO re-enable when reconfiguration happens
+        //self.video_off(); // TODO: move into with_raster
+        //self.sync_off();
 
         // Place the horizontal timers in reset, disabling interrupts.
         disable_h_timer(
@@ -254,12 +251,13 @@ impl Vga<Idle> {
         );
 
         // Busy-wait for pending DMA to complete.
-        while self.dma2.s5cr.read().en().bit_is_set() {
+        while self.mode_state.0.dma2.s5cr.read().en().bit_is_set() {
             // busy wait
         }
 
         // Switch to new CPU clock settings.
         //rcc.configure_clocks(timing.clock_config);
+        unimplemented!();
 
         // Configure TIM3/4 for horizontal sync generation.
         configure_h_timer(
@@ -275,7 +273,7 @@ impl Vga<Idle> {
             timing,
             &mut self.nvic,
             &device::Interrupt::TIM4,
-            &self.tim4,
+            &self.mode_state.0.tim4,
             &self.rcc,
             |w| w.tim4en().set_bit(),
             |w| w.tim4rst().set_bit(),
@@ -290,18 +288,19 @@ impl Vga<Idle> {
                        .mms().enable()
                        .ccds().clear_bit());
 
+        let tim4 = &self.mode_state.0.tim4;
+
         // Configure tim4 to trigger from tim3 and run forever.
-        self.tim4.smcr.write(|w| unsafe {
+        tim4.smcr.write(|w| unsafe {
             // BUG: TS and SMS contents not modeled, have to use raw bits
             w.ts().bits(0b10)
                 .sms().bits(0b110)
         });
 
-
         // Turn on tim4's interrupts.
-        self.tim4.dier.write(|w| w
-                  .cc2ie().set_bit()    // Interrupt at start of active video.
-                  .cc3ie().set_bit());  // Interrupt at end of active video.
+        tim4.dier.write(|w| w
+             .cc2ie().set_bit()    // Interrupt at start of active video.
+             .cc3ie().set_bit());  // Interrupt at end of active video.
 
         // Turn on only one of tim3's:
         // Interrupt at start of active video.
@@ -310,9 +309,10 @@ impl Vga<Idle> {
         // Note: timers still not running.
 
         // Initialize vsync output to its starting state.
+        let gpiob = &self.mode_state.0.gpiob;
         match timing.vsync_polarity {
-            Polarity::Positive => self.gpiob.bsrr.write(|w| w.br7().set_bit()),
-            Polarity::Negative => self.gpiob.bsrr.write(|w| w.bs7().set_bit()),
+            Polarity::Positive => gpiob.bsrr.write(|w| w.br7().set_bit()),
+            Polarity::Negative => gpiob.bsrr.write(|w| w.bs7().set_bit()),
         }
 
         /*
@@ -343,16 +343,57 @@ impl Vga<Idle> {
         *TIMING.try_lock().unwrap() = Some(*timing);
         VERT_STATE.store(VState::Blank as usize, Ordering::Relaxed);
 
-        // Start TIM3, which starts TIM4.
-        enable_irq(&mut self.nvic, device::Interrupt::TIM3);
-        enable_irq(&mut self.nvic, device::Interrupt::TIM4);
-        self.tim3.cr1.modify(|_, w| w.cen().set_bit());
+        sync_on(&self.mode_state.0.gpiob);
 
-        self.sync_on();
+        // Reconstruct self in the new typestate, donating our hardware to the
+        // ISRs.
+        let hw = self.mode_state.0;
+        *HSTATE_HW.try_lock().unwrap() = Some(hw);
+        let mut new_self = Vga {
+            rcc: self.rcc,
+            gpioe: self.gpioe,
+            tim3: self.tim3,
+            nvic: self.nvic,
+            mode_state: Sync(()),
+        };
+
+        // Start TIM3, which starts TIM4.
+        enable_irq(&mut new_self.nvic, device::Interrupt::TIM3);
+        enable_irq(&mut new_self.nvic, device::Interrupt::TIM4);
+        new_self.tim3.cr1.modify(|_, w| w.cen().set_bit());
+        new_self
     }
 }
 
-impl Vga<Ready> {
+/// Operations that are valid when sync has been configured, but before video
+/// output is enabled.
+impl Vga<Sync> {
+    /// Provides `rast` to the driver interrupt handler as the raster callback,
+    /// and executes `scope`. When `scope` returns, `rast` is revoked. Note that
+    /// this may require busy-waiting until the end of active video.
+    ///
+    /// During the execution of `scope` the application has access to the driver
+    /// in a different state, `Vga<Ready>`, which exposes additional operations.
+    pub fn with_raster<R>(&mut self,
+                          mut rast: impl for<'c> FnMut(usize,
+                                                       &'c mut TargetBuffer,
+                                                       &'c mut RasterCtx)
+                                         + Send,
+                          scope: impl FnOnce(&mut Vga<Live>) -> R)
+        -> R
+    {
+        // We're punning our self reference for the other typestate below, so
+        // make sure that's likely to work: (this assert should disappear)
+        assert_eq!(core::mem::size_of::<Sync>(),
+                   core::mem::size_of::<Live>());
+
+        RASTER.donate(&mut rast, || {
+            scope(unsafe { core::mem::transmute(self) })
+        })
+    }
+}
+
+impl Vga<Live> {
     /// Enables video output. This is not synchronized and can happen in the
     /// middle of the frame; if that bothers you, synchronize with vblank.
     pub fn video_on(&mut self) {
@@ -391,7 +432,7 @@ impl Vga<Ready> {
     }
 }
 
-fn a_test(vga: &mut Vga<Idle>) -> ! {
+fn a_test(vga: &mut Vga<Sync>) -> ! {
     let mut color = 0;
     vga.with_raster(
         |ln, tgt, rc| {
@@ -471,16 +512,17 @@ pub fn init(mut nvic: cm::NVIC,
 
     let vga = Vga {
         rcc,
-        gpiob,
         gpioe,
-        tim1,
-        tim3,
-        tim4,
-        dma2,
         nvic,
-        _marker: PhantomData,
+        tim3,
+        mode_state: Idle(HStateHw {
+            gpiob,
+            tim1,
+            tim4,
+            dma2,
+        }),
     };
-    vga.sync_off();
+    sync_off(&vga.mode_state.0.gpiob);
     vga.video_off();
     vga
 }

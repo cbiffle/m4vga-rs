@@ -19,16 +19,18 @@ pub fn hstate_isr() {
                      .cc3if().clear_bit());
 
     if sr.cc2if().bit_is_set() {
-        // Note: we are racing PendSV end-of-rasterization for control of this
-        // lock.
-        let params = NEXT_XFER.try_lock().unwrap();
-        let dma_xfer = unsafe { core::mem::transmute(params.dma_cr_bits) };
-        start_of_active_video(
-            &hw.dma2,
-            &hw.tim1,
-            dma_xfer,
-            params.use_timer,
-        );
+        if vert_state().is_displayed_state() {
+            // Note: we are racing PendSV end-of-rasterization for control of
+            // this lock.
+            let params = NEXT_XFER.try_lock().unwrap();
+            let dma_xfer = unsafe { core::mem::transmute(params.dma_cr_bits) };
+            start_of_active_video(
+                &hw.dma2,
+                &hw.tim1,
+                dma_xfer,
+                params.use_timer,
+            );
+        }
     }
 
     if sr.cc3if().bit_is_set() {
@@ -46,10 +48,6 @@ fn start_of_active_video(dma: &device::DMA2,
                          drq_timer: &device::TIM1,
                          dma_xfer: device::dma2::s5cr::W,
                          use_timer_drq: bool) {
-    if !vert_state().is_displayed_state() {
-        return
-    }
-
     // Clear stream 5 flags. HIFCR is a write-1-to-clear register.
     dma.hifcr.write(|w| w
                     .cdmeif5().set_bit()
