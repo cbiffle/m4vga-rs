@@ -72,7 +72,7 @@ fn main() -> ! {
     let mut vga = vga::init(
         cp.NVIC,
         &mut cp.SCB,
-        &p.FLASH,
+        p.FLASH,
         &p.DBG,
         p.RCC,
         p.GPIOB,
@@ -101,17 +101,22 @@ fn main() -> ! {
 }
 
 static SVGA_800_600: vga::Timing = vga::Timing {
-    clock_config: vga::ClockConfig {
+    clock_config: stm32::ClockConfig {
         crystal_hz: 8000000.0,// external crystal Hz
         crystal_divisor: 4,   // divide down to 2Mhz
         vco_multiplier: 160,  // multiply up to 320MHz VCO
-        general_divisor: 2,   // divide by 2 for 160MHz CPU clock
+        // divide by 2 for 160MHz CPU clock
+        general_divisor: device::rcc::pllcfgr::PLLPW::DIV2,
         pll48_divisor: 7,     // divide by 7 for 48MHz-ish SDIO clock
-        ahb_divisor: 1,       // divide CPU clock by 1 for 160MHz AHB clock
-        apb1_divisor: 4,      // divide CPU clock by 4 for 40MHz APB1 clock.
-        apb2_divisor: 2,      // divide CPU clock by 2 for 80MHz APB2 clock.
+        // divide CPU clock by 1 for 160MHz AHB clock
+        ahb_divisor: device::rcc::cfgr::HPREW::DIV1,
+        // divide CPU clock by 4 for 40MHz APB1 clock.
+        apb1_divisor: device::rcc::cfgr::PPRE2W::DIV4,
+        // divide CPU clock by 2 for 80MHz APB2 clock.
+        apb2_divisor: device::rcc::cfgr::PPRE2W::DIV2,
 
-        flash_latency: 5,     // 5 wait states for 160MHz at 3.3V.
+        // 5 wait states for 160MHz at 3.3V.
+        flash_latency: device::flash::acr::LATENCYW::WS5,
     },
 
     add_cycles_per_pixel: 0,

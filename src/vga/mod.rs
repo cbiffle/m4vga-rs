@@ -15,7 +15,7 @@ use core::cell::UnsafeCell;
 use core::ptr::NonNull;
 
 use crate::armv7m::*;
-use crate::stm32::copy_interrupt; // grrrr
+use crate::stm32::{ClockConfig, copy_interrupt, UsefulDivisor, configure_clocks};
 use crate::util::spin_lock::{SpinLock, SpinLockGuard};
 
 use self::rast::{RasterCtx, TargetBuffer};
@@ -64,7 +64,8 @@ static NEXT_XFER: SpinLock<NextTransfer> = SpinLock::new(NextTransfer {
     use_timer: false,
 });
 
-#[derive(Copy, Clone, Debug)]
+// TODO: I want this to be Debug, but svd2rust hates me.
+#[derive(Clone)]
 pub struct Timing {
     pub clock_config: ClockConfig,
 
@@ -111,21 +112,6 @@ impl Timing {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct ClockConfig {
-    pub crystal_hz: f32,
-    pub crystal_divisor: usize,
-    pub vco_multiplier: usize,
-    pub general_divisor: usize,
-    pub pll48_divisor: usize,
-
-    pub ahb_divisor: usize,
-    pub apb1_divisor: usize,
-    pub apb2_divisor: usize,
-
-    pub flash_latency: usize,
-}
-
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Polarity {
     Positive = 0,
@@ -138,6 +124,7 @@ pub enum Polarity {
 /// changes what operations are available.
 pub struct Vga<MODE> {
     rcc: device::RCC,
+    flash: device::FLASH,
     gpioe: device::GPIOE,
     tim3: device::TIM3,
     nvic: cm::NVIC,  // TODO probably should not own this
@@ -256,8 +243,7 @@ impl Vga<Idle> {
         }
 
         // Switch to new CPU clock settings.
-        //rcc.configure_clocks(timing.clock_config);
-        unimplemented!();
+        configure_clocks(&self.rcc, &self.flash, &timing.clock_config);
 
         // Configure TIM3/4 for horizontal sync generation.
         configure_h_timer(
@@ -340,7 +326,7 @@ impl Vga<Idle> {
 
         // Set up global state.
         LINE.store(0, Ordering::Relaxed);
-        *TIMING.try_lock().unwrap() = Some(*timing);
+        *TIMING.try_lock().unwrap() = Some(timing.clone());
         VERT_STATE.store(VState::Blank as usize, Ordering::Relaxed);
 
         sync_on(&self.mode_state.0.gpiob);
@@ -351,6 +337,7 @@ impl Vga<Idle> {
         *HSTATE_HW.try_lock().unwrap() = Some(hw);
         let mut new_self = Vga {
             rcc: self.rcc,
+            flash: self.flash,
             gpioe: self.gpioe,
             tim3: self.tim3,
             nvic: self.nvic,
@@ -447,7 +434,7 @@ fn a_test(vga: &mut Vga<Sync>) -> ! {
 
 pub fn init(mut nvic: cm::NVIC,
             scb: &mut cm::SCB,
-            flash: &device::FLASH,
+            flash: device::FLASH,
             dbg: &device::DBG,
             rcc: device::RCC,
             gpiob: device::GPIOB,
@@ -512,6 +499,7 @@ pub fn init(mut nvic: cm::NVIC,
 
     let vga = Vga {
         rcc,
+        flash,
         gpioe,
         nvic,
         tim3,
@@ -608,8 +596,9 @@ fn configure_h_timer(timing: &Timing,
     // Configure the timer to count in pixels.  These timers live on APB1.
     // Like all APB timers they get their clocks doubled at certain APB
     // multipliers.
-    let apb_cycles_per_pixel = if timing.clock_config.apb1_divisor > 1 {
-        (timing.cycles_per_pixel() * 2 / timing.clock_config.apb1_divisor)
+    let apb1_divisor = timing.clock_config.apb1_divisor.divisor();
+    let apb_cycles_per_pixel = if apb1_divisor > 1 {
+        (timing.cycles_per_pixel() * 2 / apb1_divisor)
     } else {
         timing.cycles_per_pixel()
     };
