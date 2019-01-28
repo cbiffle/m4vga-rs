@@ -35,3 +35,10 @@ SECTIONS {
   } > SRAM16
 
 } INSERT AFTER .bss;
+
+SECTIONS {
+  .not_at_zero (NOLOAD) : {
+    /* bump location counter to avoid placing anything at zero */
+    . += 4;
+  } >RAM
+} INSERT BEFORE .data;
