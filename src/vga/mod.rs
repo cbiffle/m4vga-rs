@@ -34,7 +34,7 @@ static HSTATE_HW: SpinLock<Option<HStateHw>> = SpinLock::new(None);
 
 /// Records when a driver instance has been initialized. This is only allowed to
 /// happen once at the moment because we don't have perfect teardown code.
-static mut DRIVER_INIT_FLAG: AtomicBool = AtomicBool::new(false);
+static DRIVER_INIT_FLAG: AtomicBool = AtomicBool::new(false);
 
 /// Equivalent of `rast::TargetBuffer`, but as words to ensure alignment for
 /// certain of our high-throughput routines.
@@ -248,14 +248,14 @@ impl Vga<Idle> {
             &self.tim3,
             &self.rcc,
             |w| w.tim3en().set_bit(),
-            |w| w.tim3rst().set_bit(),
+            |w| w.tim3rst().clear_bit(),
         );
         configure_h_timer(
             timing,
             &self.mode_state.0.tim4,
             &self.rcc,
             |w| w.tim4en().set_bit(),
-            |w| w.tim4rst().set_bit(),
+            |w| w.tim4rst().clear_bit(),
         );
 
         // Adjust tim3's CC2 value back in time.
@@ -322,6 +322,8 @@ impl Vga<Idle> {
         *TIMING.try_lock().unwrap() = Some(timing.clone());
         VERT_STATE.store(VState::Blank as usize, Ordering::Relaxed);
 
+        // This merely converts the sync pins to outputs; sync generation won't
+        // start until the timers start below.
         sync_on(&self.mode_state.0.gpiob);
 
         // Reconstruct self in the new typestate, donating our hardware to the
@@ -337,9 +339,11 @@ impl Vga<Idle> {
             mode_state: Sync(()),
         };
 
-        // Start TIM3, which starts TIM4.
+        // Turn on both our device interrupts (order doesn't matter)
         enable_irq(&mut new_self.nvic, device::Interrupt::TIM3);
         enable_irq(&mut new_self.nvic, device::Interrupt::TIM4);
+
+        // Start TIM3, which starts TIM4.
         new_self.tim3.cr1.modify(|_, w| w.cen().set_bit());
         new_self
     }
@@ -426,9 +430,7 @@ pub fn init(mut nvic: cm::NVIC,
             )
     -> Vga<Idle>
 {
-    let previous_instance = unsafe {
-        DRIVER_INIT_FLAG.swap(true, Ordering::SeqCst)
-    };
+    let previous_instance = DRIVER_INIT_FLAG.swap(true, Ordering::SeqCst);
     assert_eq!(previous_instance, false);
 
     // Turn on I/O compensation cell to reduce noise on power supply.
@@ -441,6 +443,7 @@ pub fn init(mut nvic: cm::NVIC,
                        .gpioben().enabled()
                        .gpioeen().enabled()
                        .dma2en().enabled());
+    cortex_m::asm::dmb(); // ensure DMA is powered on before we write to it
 
     // DMA configuration.
     
@@ -449,7 +452,11 @@ pub fn init(mut nvic: cm::NVIC,
                      .fth().quarter()
                      .dmdis().enabled()
                      .feie().disabled());
+
     // Enable the pixel-generation timer.
+    // We use TIM1; it's an APB2 (fast) peripheral, and with our clock config
+    // it gets clocked at the full CPU rate.  We'll load ARR under rasterizer
+    // control to synthesize 1/n rates.
     rcc.apb2enr.modify(|_, w| w.tim1en().enabled());
     tim1.psc.reset(); // Divide by 1 => PSC=0
     tim1.cr1.write(|w| w.urs().counter_only());
@@ -460,7 +467,7 @@ pub fn init(mut nvic: cm::NVIC,
     unsafe {
         nvic.set_priority(device::Interrupt::TIM4, 0x00);
         nvic.set_priority(device::Interrupt::TIM3, 0x10);
-        scb.set_priority(SystemHandler::SysTick, 0xFF);
+        scb.set_priority(SystemHandler::PendSV, 0xFF);
     }
 
     // Enable Flash cache and prefetching to reduce jitter.
@@ -569,7 +576,9 @@ fn configure_h_timer(timing: &Timing,
                      leave_reset: impl FnOnce(&mut device::rcc::apb1rstr::W)
                                -> &mut device::rcc::apb1rstr::W) {
     rcc.apb1enr.modify(|_, w| enable_clock(w));
+    cortex_m::asm::dsb();
     rcc.apb1rstr.modify(|_, w| leave_reset(w));
+    cortex_m::asm::dsb();
 
     // Configure the timer to count in pixels.  These timers live on APB1.
     // Like all APB timers they get their clocks doubled at certain APB

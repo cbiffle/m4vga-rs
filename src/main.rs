@@ -1,11 +1,10 @@
 #![no_std]
 #![no_main]
 
-// pick a panicking behavior
-extern crate panic_halt; // you can put a breakpoint on `rust_begin_unwind` to catch panics
-// extern crate panic_abort; // requires nightly
-// extern crate panic_itm; // logs messages over ITM; requires ITM support
-// extern crate panic_semihosting; // logs messages to the host stderr; requires a debugger
+// This isn't Rust 2015 cruft: the panic handler crates only have side effects
+// at link time, so this statement is necessary to get it considered for
+// linking.
+extern crate panic_itm;
 
 mod armv7m;
 mod stm32;
@@ -17,7 +16,7 @@ mod vga;
 #[allow(unused)] // TODO
 mod font_10x16;
 
-use cortex_m::asm;
+use cortex_m::{asm, iprintln};
 use cortex_m_rt::{entry, pre_init, exception};
 use stm32f4;
 
@@ -30,6 +29,16 @@ unsafe fn pre_init() {
     //
     // This function runs before .data and .bss are initialized. Any access to a
     // `static` is undefined behavior!
+
+    // Point VTOR to the Flash-resident copy of the vector table, instead of its
+    // current alias at zero. Have to do this before remapping memory or any
+    // exception will fail hard.
+    //
+    // TODO: the vector table needs to end up in RAM. The way I did this in C++
+    // was to arrange the sections so the table got copied with the initialised
+    // data image. Do that, or something less clever.
+    let scb = &*cortex_m::peripheral::SCB::ptr();
+    scb.vtor.write(0x0800_0000); // TODO magical address should come from symbol
 
     // Turn on power to the SYSCFG peripheral, which is a prerequisite to what
     // we actually want to do.
@@ -80,8 +89,12 @@ fn main() -> ! {
         p.TIM3,
         p.TIM4,
         p.DMA2,
-    ).configure_timing(&SVGA_800_600);
+    );
 
+    let mut vga = vga.configure_timing(&SVGA_800_600);
+
+    iprintln!(&mut cp.ITM.stim[0], "clocks configured, starting rasterization");
+    
     vga.with_raster(
         |_, tgt, ctx| {
             let mut pixel = 0;
