@@ -9,10 +9,7 @@ use cortex_m::peripheral as cm;
 
 use cortex_m::peripheral::scb::SystemHandler;
 
-use core::marker::PhantomData;
-use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
-use core::cell::UnsafeCell;
-use core::ptr::NonNull;
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use crate::armv7m::*;
 use crate::stm32::{ClockConfig, copy_interrupt, UsefulDivisor, configure_clocks};
@@ -248,8 +245,6 @@ impl Vga<Idle> {
         // Configure TIM3/4 for horizontal sync generation.
         configure_h_timer(
             timing,
-            &mut self.nvic,
-            &device::Interrupt::TIM3,
             &self.tim3,
             &self.rcc,
             |w| w.tim3en().set_bit(),
@@ -257,8 +252,6 @@ impl Vga<Idle> {
         );
         configure_h_timer(
             timing,
-            &mut self.nvic,
-            &device::Interrupt::TIM4,
             &self.mode_state.0.tim4,
             &self.rcc,
             |w| w.tim4en().set_bit(),
@@ -419,19 +412,6 @@ impl Vga<Live> {
     }
 }
 
-fn a_test(vga: &mut Vga<Sync>) -> ! {
-    let mut color = 0;
-    vga.with_raster(
-        |ln, tgt, rc| {
-            rast::solid_color_fill(ln, tgt, rc, 800, color);
-            color = color.wrapping_add(1);
-        },
-        |vga| {
-            loop { }
-        },
-    )
-}
-
 pub fn init(mut nvic: cm::NVIC,
             scb: &mut cm::SCB,
             flash: device::FLASH,
@@ -582,8 +562,6 @@ fn disable_h_timer(nvic: &mut cortex_m::peripheral::NVIC,
 }
 
 fn configure_h_timer(timing: &Timing,
-                     nvic: &mut cortex_m::peripheral::NVIC,
-                     i: &device::Interrupt,
                      tim: &device::tim3::RegisterBlock,
                      rcc: &device::RCC,
                      enable_clock: impl FnOnce(&mut device::rcc::apb1enr::W)

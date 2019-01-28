@@ -1,3 +1,5 @@
+#![allow(unused)] // TODO: this whole module is stubbed out
+
 use core::cell::Cell;
 use core::ops::{Deref, DerefMut};
 use core::ptr::{self, NonNull};

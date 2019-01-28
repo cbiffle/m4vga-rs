@@ -1,8 +1,6 @@
 #![no_std]
 #![no_main]
 
-#![allow(unused)]
-
 // pick a panicking behavior
 extern crate panic_halt; // you can put a breakpoint on `rust_begin_unwind` to catch panics
 // extern crate panic_abort; // requires nightly
@@ -16,13 +14,15 @@ mod util;
 mod copy_words;
 mod arena;
 mod vga;
+#[allow(unused)] // TODO
 mod font_10x16;
 
 use cortex_m::asm;
-use cortex_m_rt::{entry, pre_init};
+use cortex_m_rt::{entry, pre_init, exception};
 use stm32f4;
 
 use stm32f4::stm32f407 as device;
+use stm32f4::stm32f407::interrupt;
 
 #[pre_init]
 unsafe fn pre_init() {
@@ -30,8 +30,6 @@ unsafe fn pre_init() {
     //
     // This function runs before .data and .bss are initialized. Any access to a
     // `static` is undefined behavior!
-
-    use core::sync::atomic::{fence, Ordering};
 
     // Turn on power to the SYSCFG peripheral, which is a prerequisite to what
     // we actually want to do.
@@ -49,6 +47,7 @@ unsafe fn pre_init() {
     asm::isb();
 }
 
+#[allow(unused_parens)] // TODO bug in cortex_m_rt
 #[entry]
 fn main() -> ! {
     let mut cp = cortex_m::peripheral::Peripherals::take().unwrap();
@@ -134,3 +133,20 @@ static SVGA_800_600: vga::Timing = vga::Timing {
     video_end_line  : 1 + 4 + 23 + 600,
     vsync_polarity  : vga::Polarity::Positive,
 };
+
+#[exception]
+fn PendSV() {
+    vga::bg_rast::maintain_raster_isr()
+}
+
+#[interrupt]
+fn TIM3() {
+    vga::shock::shock_absorber_isr()
+}
+
+#[interrupt]
+fn TIM4() {
+    vga::hstate::hstate_isr()
+}
+
+

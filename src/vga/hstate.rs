@@ -13,7 +13,7 @@ pub fn hstate_isr() {
     // TODO: this appears to be the most concise way of read-modify-writing a
     // register and saving the prior value in the current svd2rust API. Report a
     // bug.
-    let mut sr = hw.tim4.sr.read();
+    let sr = hw.tim4.sr.read();
     hw.tim4.sr.write(|w| unsafe { w.bits(sr.bits()) }
                      .cc2if().clear_bit()
                      .cc3if().clear_bit());

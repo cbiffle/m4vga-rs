@@ -2,18 +2,10 @@
 //! interrupts) rasterization.
 
 use stm32f4::stm32f407 as device;
-use cortex_m::peripheral as cm;
 
-use cortex_m::peripheral::scb::SystemHandler;
+use core::sync::atomic::Ordering;
 
-use core::marker::PhantomData;
-use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
-use core::cell::UnsafeCell;
-use core::ptr::NonNull;
-
-use crate::armv7m::*;
-use crate::stm32::copy_interrupt; // grrrr
-use crate::util::spin_lock::{SpinLock, SpinLockGuard};
+use crate::util::spin_lock::SpinLock;
 use crate::vga::{WorkingBuffer, WORKING_BUFFER_SIZE, vert_state, acquire_hw, HSTATE_HW, NEXT_XFER, NextTransfer, TIMING, LINE, Timing, RASTER};
 use crate::vga::rast::{RasterCtx, TargetBuffer};
 
@@ -75,7 +67,7 @@ static mut GLOBAL_SCANOUT_BUFFER: WorkingBuffer = [0; WORKING_BUFFER_SIZE];
 
 
 /// Entry point for the raster maintenance ISR, invoked as PendSV.
-fn maintain_raster_isr() {
+pub fn maintain_raster_isr() {
     // Safety: RASTER_STATE is mut only because rustc is really picky about
     // seeing uses of mut statics like GLOBAL_WORKING_BUFFER in the initializers
     // of non-mut statics.
@@ -125,7 +117,7 @@ fn maintain_raster_isr() {
     // Rasterization can take a while, and may run concurrently with scanout.
     // As a result, we just stash our results in places where the *next* PendSV
     // will find and apply them.
-    if (vs.is_rendered_state()) {
+    if vs.is_rendered_state() {
         let state = &mut *state;
         rasterize_next_line(
             &*TIMING.try_lock().unwrap().as_mut().unwrap(),
@@ -323,7 +315,7 @@ fn rasterize_next_line(timing: &Timing,
         };
         // Invoke the rasterizer.
         RASTER.observe(|r| r(
-                current_line,
+                visible_line,
                 working_buffer_as_u8(working),
                 ctx,
         ));

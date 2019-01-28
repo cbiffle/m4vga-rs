@@ -1,9 +1,10 @@
+#[allow(unused)] // TODO
 pub mod bitmap_1;
+#[allow(unused)] // TODO
 pub mod text_10x16;
 
 use core::sync::atomic::{Ordering, AtomicUsize, AtomicBool};
 use core::cell::Cell;
-use core::ptr::NonNull;
 use scopeguard::defer;
 use super::Pixel;
 
