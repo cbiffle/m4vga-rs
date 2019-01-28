@@ -34,13 +34,14 @@ pub fn hstate_isr() {
     }
 
     if sr.cc3if().bit_is_set() {
-        end_of_active_video(
+        let line = end_of_active_video(
             &hw.tim1,
             &hw.tim4,
             &hw.gpiob,
             TIMING.try_lock().unwrap().as_ref().unwrap(),
             LINE.load(Ordering::Relaxed),
         );
+        LINE.store(line, Ordering::Relaxed);
     }
 }
 
@@ -66,6 +67,7 @@ fn start_of_active_video(dma: &device::DMA2,
 /// Handler for the end-of-active-video horizontal state event.
 ///
 /// Returns the number of the next scanline.
+#[must_use = "you forgot to advance the line"]
 fn end_of_active_video(drq_timer: &device::TIM1,
                        h_timer: &device::TIM4,
                        gpiob: &device::GPIOB,

@@ -18,7 +18,7 @@ use stm32f4::stm32f407 as device;
 use crate::vga::{acquire_hw};
 use crate::util::spin_lock::SpinLock;
 
-static SHOCK_TIMER: SpinLock<Option<device::TIM3>> = SpinLock::new(None);
+pub static SHOCK_TIMER: SpinLock<Option<device::TIM3>> = SpinLock::new(None);
 
 /// Entry point for the shock absorber ISR.
 ///

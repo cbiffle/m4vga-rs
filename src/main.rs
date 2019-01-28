@@ -77,7 +77,7 @@ fn main() -> ! {
 
     let p = device::Peripherals::take().unwrap();
 
-    let mut vga = vga::init(
+    let vga = vga::init(
         cp.NVIC,
         &mut cp.SCB,
         p.FLASH,

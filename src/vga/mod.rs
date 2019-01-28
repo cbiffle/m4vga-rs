@@ -123,14 +123,16 @@ pub struct Vga<MODE> {
     rcc: device::RCC,
     flash: device::FLASH,
     gpioe: device::GPIOE,
-    tim3: device::TIM3,
     nvic: cm::NVIC,  // TODO probably should not own this
 
     mode_state: MODE,
 }
 
 /// Driver mode right after initialization, but before `configure_timing`.
-pub struct Idle(HStateHw);
+pub struct Idle {
+    hstate: HStateHw,
+    tim3: device::TIM3,
+}
 
 /// Driver mode once timing has been configured.
 pub struct Sync(());
@@ -235,7 +237,7 @@ impl Vga<Idle> {
         );
 
         // Busy-wait for pending DMA to complete.
-        while self.mode_state.0.dma2.s5cr.read().en().bit_is_set() {
+        while self.mode_state.hstate.dma2.s5cr.read().en().bit_is_set() {
             // busy wait
         }
 
@@ -245,29 +247,29 @@ impl Vga<Idle> {
         // Configure TIM3/4 for horizontal sync generation.
         configure_h_timer(
             timing,
-            &self.tim3,
+            &self.mode_state.tim3,
             &self.rcc,
             |w| w.tim3en().set_bit(),
             |w| w.tim3rst().clear_bit(),
         );
         configure_h_timer(
             timing,
-            &self.mode_state.0.tim4,
+            &self.mode_state.hstate.tim4,
             &self.rcc,
             |w| w.tim4en().set_bit(),
             |w| w.tim4rst().clear_bit(),
         );
 
         // Adjust tim3's CC2 value back in time.
-        self.tim3.ccr2.modify(|r, w| w.ccr2().bits(
+        self.mode_state.tim3.ccr2.modify(|r, w| w.ccr2().bits(
                 r.ccr2().bits() - SHOCK_ABSORBER_SHIFT_CYCLES));
 
         // Configure tim3 to distribute its enable signal as its trigger output.
-        self.tim3.cr2.write(|w| w
+        self.mode_state.tim3.cr2.write(|w| w
                        .mms().enable()
                        .ccds().clear_bit());
 
-        let tim4 = &self.mode_state.0.tim4;
+        let tim4 = &self.mode_state.hstate.tim4;
 
         // Configure tim4 to trigger from tim3 and run forever.
         tim4.smcr.write(|w| unsafe {
@@ -283,12 +285,12 @@ impl Vga<Idle> {
 
         // Turn on only one of tim3's:
         // Interrupt at start of active video.
-        self.tim3.dier.write(|w| w.cc2ie().set_bit());
+        self.mode_state.tim3.dier.write(|w| w.cc2ie().set_bit());
 
         // Note: timers still not running.
 
         // Initialize vsync output to its starting state.
-        let gpiob = &self.mode_state.0.gpiob;
+        let gpiob = &self.mode_state.hstate.gpiob;
         match timing.vsync_polarity {
             Polarity::Positive => gpiob.bsrr.write(|w| w.br7().set_bit()),
             Polarity::Negative => gpiob.bsrr.write(|w| w.bs7().set_bit()),
@@ -324,27 +326,30 @@ impl Vga<Idle> {
 
         // This merely converts the sync pins to outputs; sync generation won't
         // start until the timers start below.
-        sync_on(&self.mode_state.0.gpiob);
+        sync_on(&self.mode_state.hstate.gpiob);
 
         // Reconstruct self in the new typestate, donating our hardware to the
         // ISRs.
-        let hw = self.mode_state.0;
+        let hw = self.mode_state.hstate;
         *HSTATE_HW.try_lock().unwrap() = Some(hw);
+        let tim3 = self.mode_state.tim3;
         let mut new_self = Vga {
             rcc: self.rcc,
             flash: self.flash,
             gpioe: self.gpioe,
-            tim3: self.tim3,
             nvic: self.nvic,
             mode_state: Sync(()),
         };
 
-        // Turn on both our device interrupts (order doesn't matter)
-        enable_irq(&mut new_self.nvic, device::Interrupt::TIM3);
-        enable_irq(&mut new_self.nvic, device::Interrupt::TIM4);
-
         // Start TIM3, which starts TIM4.
-        new_self.tim3.cr1.modify(|_, w| w.cen().set_bit());
+        tim3.cr1.modify(|_, w| w.cen().set_bit());
+        *shock::SHOCK_TIMER.try_lock().unwrap() = Some(tim3);
+
+        // Turn on both our device interrupts. We need to turn on TIM4 before
+        // TIM3 or TIM3 may just wake up and idle forever.
+        enable_irq(&mut new_self.nvic, device::Interrupt::TIM4);
+        enable_irq(&mut new_self.nvic, device::Interrupt::TIM3);
+
         new_self
     }
 }
@@ -489,15 +494,17 @@ pub fn init(mut nvic: cm::NVIC,
         flash,
         gpioe,
         nvic,
-        tim3,
-        mode_state: Idle(HStateHw {
-            gpiob,
-            tim1,
-            tim4,
-            dma2,
-        }),
+        mode_state: Idle {
+            hstate: HStateHw {
+                gpiob,
+                tim1,
+                tim4,
+                dma2,
+            },
+            tim3,
+        },
     };
-    sync_off(&vga.mode_state.0.gpiob);
+    sync_off(&vga.mode_state.hstate.gpiob);
     vga.video_off();
     vga
 }
