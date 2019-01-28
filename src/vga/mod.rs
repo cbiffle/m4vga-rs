@@ -607,7 +607,7 @@ fn configure_h_timer(timing: &Timing,
     tim.ccr2.write(|w| unsafe { w.bits(
                 (timing.sync_pixels
                  + timing.back_porch_pixels - timing.video_lead) as u32
-                )});;
+                )});
     tim.ccr3.write(|w| unsafe { w.bits(
                 (timing.sync_pixels
                  + timing.back_porch_pixels + timing.video_pixels) as u32

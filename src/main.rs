@@ -136,7 +136,7 @@ static SVGA_800_600: vga::Timing = vga::Timing {
     line_pixels      : 1056,
     sync_pixels      : 128,
     back_porch_pixels: 88,
-    video_lead       : 19,
+    video_lead       : 23,
     video_pixels     : 800,
     hsync_polarity   : vga::Polarity::Positive,
 
