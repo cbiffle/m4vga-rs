@@ -198,12 +198,16 @@ impl IRef {
                 let poisoner = scopeguard::guard((),
                     |_| self.poisoned.store(true, Ordering::Release));
 
-                let r = self.contents.get();
-                // We do *not* know the correct lifetime for the &mut.  This is
-                // why the `body` closure is `for<'a>`.
-                let r: &mut (dyn for<'r> FnMut(_, &'r mut _, &'r mut _) + Send) =
-                    unsafe { core::mem::transmute(r) };
-                let result = body(r);
+                let result = {
+                    let r = self.contents.get();
+                    // We do *not* know the correct lifetime for the &mut.  This
+                    // is why the `body` closure is `for<'a>`.
+                    let r: &mut (dyn for<'r> FnMut(_, &'r mut _, &'r mut _)
+                                 + Send) =
+                        unsafe { core::mem::transmute(r) };
+                    body(r)
+                };
+                self.state.store(LOADED, Ordering::Release);
                 scopeguard::ScopeGuard::into_inner(poisoner);
                 result
             })

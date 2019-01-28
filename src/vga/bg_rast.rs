@@ -119,7 +119,7 @@ pub fn maintain_raster_isr() {
     // will find and apply them.
     if vs.is_rendered_state() {
         let state = &mut *state;
-        rasterize_next_line(
+        state.update_scan_buffer = rasterize_next_line(
             &*TIMING.try_lock().unwrap().as_mut().unwrap(),
             &mut state.raster_ctx,
             &mut state.working_buffer,
@@ -159,6 +159,7 @@ fn update_scan_buffer(len_bytes: usize,
 /// scanout the rest of the way: a CR value and a flag indicating whether the
 /// scanout will use a timer-generated DRQ (`true`) or run at full speed
 /// (`false`).
+#[must_use = "scanout parameters are returned, not set globally"]
 fn prepare_for_scanout(dma: &device::DMA2,
                        vtimer: &device::tim1::RegisterBlock,
                        ctx: &RasterCtx)
@@ -251,7 +252,7 @@ fn prepare_for_scanout(dma: &device::DMA2,
         }
 
         xfer.dir().memory_to_peripheral()
-            .minc().clear_bit()
+            .minc().set_bit()
             .psize().byte()
             .pinc().clear_bit();
        
@@ -291,12 +292,13 @@ fn prepare_for_scanout(dma: &device::DMA2,
             .dir().memory_to_memory()
             .pinc().set_bit()
             .msize().byte()
-            .minc().set_bit();
+            .minc().clear_bit();
 
         (xfer, false)
     }
 }
 
+#[must_use = "the update flag is pretty important"]
 fn rasterize_next_line(timing: &Timing,
                        ctx: &mut RasterCtx,
                        working: &mut WorkingBuffer)
@@ -318,7 +320,7 @@ fn rasterize_next_line(timing: &Timing,
                 visible_line,
                 working_buffer_as_u8(working),
                 ctx,
-        ));
+        )).unwrap();
         true
     } else {  // repeat_lines > 0
         ctx.repeat_lines -= 1;

@@ -97,7 +97,7 @@ fn main() -> ! {
     
     vga.with_raster(
         |_, tgt, ctx| {
-            let mut pixel = 0;
+            let mut pixel = 0xFF;
             for t in &mut tgt[0..800] {
                 *t = pixel;
                 pixel ^= 0xFF;
