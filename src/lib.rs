@@ -4,7 +4,7 @@ pub mod armv7m;
 pub mod stm32;
 mod startup;
 
-mod util;
+pub mod util;
 mod copy_words;
 mod arena;
 pub mod vga;

@@ -44,19 +44,38 @@ pub enum TryLockMutError {
 }
 
 impl<T: ?Sized> ReadWriteLock<T> {
+    /// Attempts to lock `self` for reading.
+    ///
+    /// If this succeeds, the returned `Guard<T>` can be used to access the
+    /// contents of the lock, with the guarantee that they will not be mutated.
+    ///
+    /// This can fail for two reasons, encoded in the values of `TryLockError`.
+    ///
+    /// 1. If some other code holds a `GuardMut<T>` on `self`, the contents may
+    ///    change and so we can't get our lock. In this case, the error is
+    ///    `TryLockError::Unavailable`.
+    ///
+    /// 2. If a higher-priority task (i.e. an ISR) preempts us and takes out a
+    ///    lock while this function is executing, we have to try again. In this
+    ///    case, the error is `TryLockError::Race`.
+    ///
+    /// These cases are distinguished because, if you're confident that code is
+    /// not going to get preempted, calling `try_lock` and treating the
+    /// (allegedly impossible) `Race` case as an error is significantly cheaper
+    /// than including a retry loop.
     pub fn try_lock(&self) -> Result<Guard<T>, TryLockError> {
         // Observe our current status. If it does not allow a read guard to be
         // created, abort.
         let status = self.status.load(Ordering::Acquire);
-        if writing(status) || status == isize::max_value() {
+        if read_unavail(status) {
             return Err(TryLockError::Unavailable)
         }
 
         // Attempt to atomically increment the status to record a new read
         // guard. If this succeeds, we've locked it. If this fails, some
-        // higher-priority task has come through and locked it during the last
-        // few instructions.
-        self.status.compare_exchange(
+        // higher-priority task has come through during the last few
+        // instructions -- indicate a race.
+        self.status.compare_exchange_weak(
             status,
             status + 1,
             Ordering::Release,
@@ -64,11 +83,7 @@ impl<T: ?Sized> ReadWriteLock<T> {
         ).map(|_| Guard {
             borrow: Borrow(&self.status),
             value: unsafe { &*self.value.get() },
-        }).map_err(|s| if writing(s) || s == isize::max_value() {
-            TryLockError::Unavailable
-        } else {
-            TryLockError::Race
-        })
+        }).map_err(|_| TryLockError::Race)
     }
 
     /// Locks `self` for reading, spinning forever if necessary.
@@ -181,3 +196,16 @@ impl<'a> Drop for BorrowMut<'a> {
 
 fn writing(x: isize) -> bool { x < 0 }
 fn reading(x: isize) -> bool { x > 0 }
+
+/// Checks if we *can't* take out a read lock given a status word. We can't take
+/// out a read lock if:
+///
+/// 1. The status is negative (i.e. write locks exist).
+/// 2. The status would overflow -- it is `isize::max_value()`.
+///
+/// This implementation exploits the fact that `isize::max_value()` and the
+/// negative numbers form a single contiguous range, if you interpret them as
+/// unsigned. This shaves several instructions off the test.
+fn read_unavail(x: isize) -> bool {
+    x as usize >= isize::max_value() as usize
+}
