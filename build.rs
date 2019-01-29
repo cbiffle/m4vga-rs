@@ -21,4 +21,8 @@ fn main() {
         .file("src/asm/unpack_1bpp_overlay.S")
         .file("src/asm/copy_words.S")
         .compile("libunrusted.a");
+
+    cc::Build::new()
+        .file("src/bin/xor_pattern/pattern.S")
+        .compile("libxor_pattern.a");
 }

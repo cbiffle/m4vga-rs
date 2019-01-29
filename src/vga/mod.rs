@@ -127,7 +127,9 @@ impl<T: SyncOn> Vga<T> {
     /// Because this waits for the *transition*, if you call this *during*
     /// vblank it will wait for an entire frame.
     pub fn sync_to_vblank(&self) {
-        unimplemented!()
+        while LINE.load(Ordering::Relaxed) != 0 {
+            cortex_m::asm::wfi()
+        }
     }
 }
 

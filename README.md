@@ -25,9 +25,15 @@ This exercise is half technical, half ideological.
 
 ## Current Status and Comparisons
 
-Basic functionality is working: the [`horiz_tp`][3] demo lives. (There's a
-surprising amount of machinery required behind the scenes to generate that test
-pattern.)
+Basic functionality is working: there are demos in [`src/bin`][3].
+
+The Rust demos wind up being substantially simpler (to write) than the C++
+demos, because of some API changes I was able to make thanks to Rust's ownership
+rules. Inspired by [scoped threads in crossbeam][5], we can safely pass a
+closure to be called from ISRs that *shares stack-allocated state* with the main
+program loop. It is possible to do this in C++, but you really shouldn't because
+the result would be covered in [footguns][8]. Concretely: compare the
+`xor_pattern` demo [in Rust][9] and [in C++][10].
 
 The Rust code currently has a larger Flash footprint: 20kiB vs 4.5kiB. But this
 is misleading. From inspection of the binary, the difference is almost entirely
@@ -50,10 +56,6 @@ types][4], it's not actually that much more work at runtime.)
 On the other hand: *I can prove the absence of data races with my ISRs.* Getting
 this to work revealed a bunch of hidden data races in the C++ codebase, all of
 which are fixed in the Rust.
-
-Rust's ownership semantics also shaped some significant changes to the driver
-APIs. In particular, rasterizers now use an API modeled after [scoped threads in
-crossbeam][5], and it reduces both boilerplate and cost at runtime.
 
 ## Building it
 
@@ -82,8 +84,11 @@ As for actually using it, I'm going to defer to [the Rust Embedded book][6] and
 
 [1]: https://github.com/cbiffle/m4vgalib-demos
 [2]: https://rust-lang.org
-[3]: src/bin/horiz_tp.rs
+[3]: src/bin
 [4]: https://doc.rust-lang.org/nomicon/exotic-sizes.html
 [5]: https://docs.rs/crossbeam/0.7.1/crossbeam/thread/
 [6]: https://rust-embedded.github.io/book
 [7]: https://github.com/cbiffle/m4vgalib-demos/blob/master/README.mkdn#connections
+[8]: https://en.wiktionary.org/wiki/footgun
+[9]: src/bin/xor_pattern/main.rs
+[10]: https://github.com/cbiffle/m4vgalib-demos/tree/master/demo/xor_pattern
