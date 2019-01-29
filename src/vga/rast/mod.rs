@@ -1,4 +1,3 @@
-#[allow(unused)] // TODO
 pub mod bitmap_1;
 #[allow(unused)] // TODO
 pub mod text_10x16;
