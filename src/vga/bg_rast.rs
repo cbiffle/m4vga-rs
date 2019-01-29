@@ -85,12 +85,6 @@ pub fn maintain_raster_isr() {
     // it *cannot* run concurrently with scanout -- so we do it first, during
     // hblank.
     if vs.is_displayed_state() {
-        if state.update_scan_buffer {
-            update_scan_buffer(
-                state.raster_ctx.target_range.end,
-                &mut state.working_buffer, 
-            );
-        }
         let (dma_cr, use_timer) = {
             // We need to borrow hardware from the horizontal state machine.
             // Keep this scope as small as possible to avoid conflict.
@@ -109,6 +103,12 @@ pub fn maintain_raster_isr() {
             dma_cr_bits, 
             use_timer,
         };
+        if state.update_scan_buffer {
+            update_scan_buffer(
+                state.raster_ctx.target_range.end,
+                &mut state.working_buffer, 
+            );
+        }
     }
 
     // Allow the application to do additional work during what's left of hblank.
