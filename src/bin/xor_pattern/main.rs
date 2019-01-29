@@ -9,7 +9,6 @@ extern crate panic_itm;
 
 use core::sync::atomic::{Ordering, AtomicUsize};
 use stm32f4;
-use stm32f4::stm32f407 as device;
 use stm32f4::stm32f407::interrupt;
 use m4vga_rs::vga;
 
@@ -43,26 +42,7 @@ fn xor_pattern(line_number: usize,
 #[allow(unused_parens)] // TODO bug in cortex_m_rt
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    // Claim exclusive control of all peripherals from the runtime. This makes
-    // us responsible for divvying them up between clients; we just hand the
-    // relevant ones to the display driver, below.
-    let mut cp = cortex_m::peripheral::Peripherals::take().unwrap();
-    let p = device::Peripherals::take().unwrap();
-
-    // Give the driver its hardware resources...
-    let mut vga = vga::init(
-        cp.NVIC,
-        &mut cp.SCB,
-        p.FLASH,
-        &p.DBG,
-        p.RCC,
-        p.GPIOB,
-        p.GPIOE,
-        p.TIM1,
-        p.TIM3,
-        p.TIM4,
-        p.DMA2)
-        // ...and select a display timing.
+    let mut vga = vga::take_hardware()
         .configure_timing(&m4vga_rs::vga::timing::SVGA_800_600);
 
     // Okay, demo time. This demo keeps a single piece of state: a frame

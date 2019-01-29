@@ -371,6 +371,26 @@ impl Vga<Live> {
     }
 }
 
+/// Simplified version of `init` that assumes ownership of all hardware. This
+/// covers the common case of pure graphics demos.
+pub fn take_hardware() -> Vga<Idle> {
+    let mut cp = cortex_m::peripheral::Peripherals::take().unwrap();
+    let p = device::Peripherals::take().unwrap();
+
+    init(
+        cp.NVIC,
+        &mut cp.SCB,
+        p.FLASH,
+        &p.DBG,
+        p.RCC,
+        p.GPIOB,
+        p.GPIOE,
+        p.TIM1,
+        p.TIM3,
+        p.TIM4,
+        p.DMA2)
+}
+
 pub fn init(mut nvic: cm::NVIC,
             scb: &mut cm::SCB,
             flash: device::FLASH,

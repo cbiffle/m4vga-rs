@@ -17,7 +17,6 @@ extern crate panic_itm;
 
 use stm32f4;
 
-use stm32f4::stm32f407 as device;
 use stm32f4::stm32f407::interrupt;
 use m4vga_rs::vga;
 
@@ -26,25 +25,8 @@ use m4vga_rs::vga;
 #[allow(unused_parens)] // TODO bug in cortex_m_rt
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    // Claim exclusive control of all peripherals from the runtime. This makes
-    // us responsible for divvying them up between clients; we just hand the
-    // relevant ones to the display driver, below.
-    let mut cp = cortex_m::peripheral::Peripherals::take().unwrap();
-    let p = device::Peripherals::take().unwrap();
-
     // Give the driver its hardware resources...
-    vga::init(
-        cp.NVIC,
-        &mut cp.SCB,
-        p.FLASH,
-        &p.DBG,
-        p.RCC,
-        p.GPIOB,
-        p.GPIOE,
-        p.TIM1,
-        p.TIM3,
-        p.TIM4,
-        p.DMA2)
+    vga::take_hardware()
         // ...select a display timing...
         .configure_timing(&m4vga_rs::vga::timing::SVGA_800_600)
         // ... and provide a raster callback.
