@@ -16,21 +16,6 @@ use m4vga_rs::vga;
 #[entry]
 fn main() -> ! {
     let mut cp = cortex_m::peripheral::Peripherals::take().unwrap();
-
-    {
-        // Enable faults, so they don't immediately escalate to HardFault.
-        let shcsr = cp.SCB.shcrs.read();
-        unsafe { cp.SCB.shcrs.write(shcsr | (0b111 << 16)) }
-    }
-
-    unsafe {
-        // Use lazy context stacking for FP, so that we can use FP from
-        // interrupts but don't always incur an FP context save.
-        cp.FPU.fpccr.write((1 << 31)  // automatic save
-                           | (1 << 30)  // lazy save
-                           );
-    }
-
     let p = device::Peripherals::take().unwrap();
 
     let vga = vga::init(

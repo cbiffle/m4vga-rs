@@ -42,3 +42,5 @@ SECTIONS {
     . += 4;
   } >RAM
 } INSERT BEFORE .data;
+
+__vector_table_in_flash = ADDR(.vector_table);

@@ -4,35 +4,66 @@ use stm32f4;
 
 use stm32f4::stm32f407 as device;
 
+extern "C" {
+    static __vector_table_in_flash: u8;
+}
+
 #[pre_init]
 unsafe fn pre_init() {
-    // GIANT WARNING LABEL
+    //
+    //     GIANT WARNING LABEL
     //
     // This function runs before .data and .bss are initialized. Any access to a
     // `static` is undefined behavior!
-
-    // Point VTOR to the Flash-resident copy of the vector table, instead of its
-    // current alias at zero. Have to do this before remapping memory or any
-    // exception will fail hard.
     //
-    // TODO: the vector table needs to end up in RAM. The way I did this in C++
-    // was to arrange the sections so the table got copied with the initialised
-    // data image. Do that, or something less clever.
-    let scb = &*cortex_m::peripheral::SCB::ptr();
-    scb.vtor.write(0x0800_0000); // TODO magical address should come from symbol
+    // Between that and this whole function being `unsafe`, we are basically
+    // writing C. 
 
-    // Turn on power to the SYSCFG peripheral, which is a prerequisite to what
-    // we actually want to do.
-    let rcc = &*device::RCC::ptr();
-    rcc.apb2enr.modify(|_, w| w.syscfgen().enabled());
+    // The cortex_m crate does not grant everyone ambient authority to mess with
+    // the SCB. This is to its *immense credit* in the general case... but we're
+    // special, so:
+    let scb = &*cortex_m::peripheral::SCB::ptr(); // tada
 
-    asm::dsb(); // ensure power's up before we try to write to it
+    // Before doing anything interesting, enable ARMv7-M detailed fault
+    // reporting. That way if we screw something up below, we get (say) a Bus
+    // Fault with useful metadata, instead of a meaningless Hard Fault.
+    scb.shcrs.write(scb.shcrs.read() | (0b111 << 16));
+
+    // VTOR points at address 0 at reset (i.e. right now). Currently this
+    // references flash, but we're about to remap memory to place SRAM there.
+    // And so, we need to change VTOR to point at the stable address of the
+    // vector table in Flash.
+    scb.vtor.write(&__vector_table_in_flash as *const _ as u32);
+
+    // At reset, SYSCFG is out of reset but its interface is not being clocked.
+    // Fix that.
+    (*device::RCC::ptr())
+        .apb2enr.modify(|_, w| w.syscfgen().enabled());
+
+    asm::dmb(); // ensure clock's a-runnin' before we try to write to it
 
     // Remap SRAM112 to address 0.
-    let syscfg = &*device::SYSCFG::ptr();
-    syscfg.memrm.write(|w| w.mem_mode().bits(0b11));
+    (*device::SYSCFG::ptr())
+        .memrm.write(|w| w.mem_mode().bits(0b11));
 
-    // Now, please.
+    // Now, please. For all we know we're about to return into it!
     asm::dsb();
     asm::isb();
+
+    // ----------- it is now slightly safer to access statics ------------
+
+    // r0 has already enabled floating point, but we use floating point in ISRs.
+    // To make this work, we need to enable automatic FP context save, so that
+    // the thread-level FP state won't get corrupted. However, doing this
+    // naively increases interrupt latency by *tens of cycles*. To avoid paying
+    // this penalty for ISRs that don't use FP, we also enable *lazy* context
+    // save, which waits until the first FPU instruction.
+    (*cortex_m::peripheral::FPU::ptr())
+        .fpccr.write((1 << 31)      // automatic
+                     | (1 << 30)    // lazy
+                     );
+
+    // Turn SYSCFG back off for good measure.
+    (*device::RCC::ptr())
+        .apb2enr.modify(|_, w| w.syscfgen().disabled());
 }
