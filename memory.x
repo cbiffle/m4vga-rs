@@ -25,7 +25,6 @@ SECTIONS {
     . = ALIGN(4);
 
     _arena_ccm_start = .;
-    . += 60000; /* start failing if I put too much stuff in local_ram */
     . = ORIGIN(CCM) + LENGTH(CCM);
     _arena_ccm_end = .;
   } >CCM
