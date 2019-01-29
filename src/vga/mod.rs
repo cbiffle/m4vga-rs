@@ -3,6 +3,7 @@ pub mod rast;
 pub mod hstate;
 pub mod bg_rast;
 pub mod shock;
+pub mod timing;
 
 use stm32f4::stm32f407 as device;
 use cortex_m::peripheral as cm;
@@ -12,10 +13,11 @@ use cortex_m::peripheral::scb::SystemHandler;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use crate::armv7m::*;
-use crate::stm32::{ClockConfig, copy_interrupt, UsefulDivisor, configure_clocks};
+use crate::stm32::{copy_interrupt, UsefulDivisor, configure_clocks};
 use crate::util::spin_lock::{SpinLock, SpinLockGuard};
 
 use self::rast::{RasterCtx, TargetBuffer};
+use self::timing::Polarity;
 
 pub type Pixel = u8;
 
@@ -60,60 +62,6 @@ static NEXT_XFER: SpinLock<NextTransfer> = SpinLock::new(NextTransfer {
     dma_cr_bits: 0,
     use_timer: false,
 });
-
-// TODO: I want this to be Debug, but svd2rust hates me.
-#[derive(Clone)]
-pub struct Timing {
-    pub clock_config: ClockConfig,
-
-    /// Number of additional AHB cycles per pixel clock cycle. The driver uses a
-    /// minimum of 4 cycles per pixel; this field adds to that. Larger values
-    /// reduce both the resolution and the compute/bandwidth requirements.
-    pub add_cycles_per_pixel: usize,
-
-    /// Total horizontal pixels per line, including blanking.
-    pub line_pixels: usize,
-    /// Length of horizontal sync pulse.
-    pub sync_pixels: usize,
-    /// Number of pixels between end of sync and start of video.
-    pub back_porch_pixels: usize,
-    /// Fudge factor, nudging the DMA interrupt backwards in time to compensate
-    /// for startup code taking non-zero time.
-    pub video_lead: usize,
-    /// Maximum visible pixels per line.
-    pub video_pixels: usize,
-    /// Polarity of horizontal sync pulse.
-    pub hsync_polarity: Polarity,
-
-    /// Scanline number of onset of vertical sync pulse, numbered from end of
-    /// active video.
-    pub vsync_start_line: usize,
-    /// Scanline number of end of vertical sync pulse, numbered from end of
-    /// active video.
-    pub vsync_end_line: usize,
-    /// Scanline number of start of active video, numbered from end of active
-    /// video.
-    pub video_start_line: usize,
-    /// Scanline number of end of active video, numbered from end of active
-    /// video in the last frame. This is the number of lines per frame.
-    pub video_end_line: usize,
-    /// Polarity of the vertical sync pulse.
-    pub vsync_polarity: Polarity,
-}
-
-const MIN_CYCLES_PER_PIXEL: usize = 4;
-
-impl Timing {
-    pub fn cycles_per_pixel(&self) -> usize {
-        self.add_cycles_per_pixel + MIN_CYCLES_PER_PIXEL
-    }
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum Polarity {
-    Positive = 0,
-    Negative = 1,
-}
 
 /// Driver state.
 ///
@@ -215,7 +163,7 @@ impl Vga<Idle> {
     /// TODO: currently there is no way to re-configure timing, but the C++
     /// implementation supports that feature. The absence is a side effect of
     /// the type-state encoding of Vga. Provide a replacement.
-    pub fn configure_timing(mut self, timing: &Timing) -> Vga<Sync> {
+    pub fn configure_timing(mut self, timing: &timing::Timing) -> Vga<Sync> {
         // TODO: timing consistency asserts
 
         //TODO re-enable when reconfiguration happens
@@ -548,7 +496,7 @@ impl VState {
 }
 
 static VERT_STATE: AtomicUsize = AtomicUsize::new(VState::Blank as usize);
-static TIMING: SpinLock<Option<Timing>> = SpinLock::new(None);
+static TIMING: SpinLock<Option<timing::Timing>> = SpinLock::new(None);
 static LINE: AtomicUsize = AtomicUsize::new(0);
 
 fn vert_state() -> VState {
@@ -575,7 +523,7 @@ fn disable_h_timer(nvic: &mut cortex_m::peripheral::NVIC,
     clear_pending_irq(copy_interrupt(i));
 }
 
-fn configure_h_timer(timing: &Timing,
+fn configure_h_timer(timing: &timing::Timing,
                      tim: &device::tim3::RegisterBlock,
                      rcc: &device::RCC,
                      enable_clock: impl FnOnce(&mut device::rcc::apb1enr::W)

@@ -28,6 +28,7 @@ cc = "1.0"
 # this lets you use `cargo fix`!
 [[bin]]
 name = "m4vga-rs"
+path = "src/main.rs"
 test = false
 bench = false
 
