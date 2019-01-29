@@ -23,7 +23,7 @@ pub fn hstate_isr() {
         if vert_state().is_displayed_state() {
             // Note: we are racing PendSV end-of-rasterization for control of
             // this lock.
-            let params = NEXT_XFER.try_lock().unwrap();
+            let params = NEXT_XFER.try_lock().expect("hstate xfer");
             let dma_xfer = unsafe { core::mem::transmute(params.dma_cr_bits) };
             start_of_active_video(
                 &hw.dma2,
@@ -39,7 +39,7 @@ pub fn hstate_isr() {
             &hw.tim1,
             &hw.tim4,
             &hw.gpiob,
-            TIMING.try_lock().unwrap().as_ref().unwrap(),
+            TIMING.try_lock().expect("hstate timing").as_ref().unwrap(),
             LINE.load(Ordering::Relaxed),
         );
         LINE.store(line, Ordering::Relaxed);

@@ -72,7 +72,7 @@ pub fn maintain_raster_isr() {
     // Safety: RASTER_STATE is mut only because rustc is really picky about
     // seeing uses of mut statics like GLOBAL_WORKING_BUFFER in the initializers
     // of non-mut statics.
-    let mut state = unsafe { RASTER_STATE.try_lock() }.unwrap();
+    let mut state = unsafe { RASTER_STATE.try_lock() }.expect("pendsv state");
 
     let vs = vert_state();
 
@@ -105,7 +105,7 @@ pub fn maintain_raster_isr() {
         let dma_cr_bits = unsafe { core::mem::transmute(dma_cr) };
 
         // Note: we are now racing hstate SAV for control of this lock.
-        *NEXT_XFER.try_lock().unwrap() = NextTransfer {
+        *NEXT_XFER.try_lock().expect("pendsv xfer") = NextTransfer {
             dma_cr_bits, 
             use_timer,
         };
@@ -121,7 +121,7 @@ pub fn maintain_raster_isr() {
     if vs.is_rendered_state() {
         let state = &mut *state;
         state.update_scan_buffer = rasterize_next_line(
-            &*TIMING.try_lock().unwrap().as_mut().unwrap(),
+            &*TIMING.try_lock().expect("pendsv timing").as_mut().unwrap(),
             &mut state.raster_ctx,
             &mut state.working_buffer,
         );
@@ -321,7 +321,7 @@ fn rasterize_next_line(timing: &Timing,
                 visible_line,
                 working_buffer_as_u8(working),
                 ctx,
-        )).unwrap();
+        )).expect("raster observe");
         true
     } else {  // repeat_lines > 0
         ctx.repeat_lines -= 1;
