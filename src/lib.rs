@@ -10,3 +10,5 @@ mod arena;
 pub mod vga;
 #[allow(unused)] // TODO
 mod font_10x16;
+
+pub mod measurement;
