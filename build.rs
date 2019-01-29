@@ -14,15 +14,19 @@ fn main() {
 
     println!("cargo:rerun-if-changed=memory.x");
     println!("cargo:rerun-if-changed=link-custom.x");
-    println!("cargo:rerun-if-changed=src/asm/copy_words.S");
+
 
     cc::Build::new()
         .file("src/asm/unpack_1bpp.S")
         .file("src/asm/unpack_1bpp_overlay.S")
         .file("src/asm/copy_words.S")
         .compile("libunrusted.a");
+    println!("cargo:rerun-if-changed=src/asm/copy_words.S");
+    println!("cargo:rerun-if-changed=src/asm/unpack_1bpp.S");
+    println!("cargo:rerun-if-changed=src/asm/unpack_1bpp_overlay.S");
 
     cc::Build::new()
         .file("src/bin/xor_pattern/pattern.S")
         .compile("libxor_pattern.a");
+    println!("cargo:rerun-if-changed=src/bin/xor_pattern/pattern.S");
 }
