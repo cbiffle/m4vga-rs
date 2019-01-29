@@ -52,6 +52,15 @@ impl<T: ?Sized + Send> SpinLock<T> {
             })
         }
     }
+
+    pub fn lock(&self) -> SpinLockGuard<T> {
+        loop {
+            match self.try_lock() {
+                Ok(guard) => return guard,
+                Err(_) => continue,
+            }
+        }
+    }
 }
 
 #[must_use = "if dropped, the spinlock will immediately unlock"]
