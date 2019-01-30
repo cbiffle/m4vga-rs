@@ -229,7 +229,7 @@ same API in `m4vgalib`. But I wouldn't, because...
 
 ### On binary size
 
-Apples-to-apples, the Rust ports of my demos are larger than their C++
+Out of the box, the Rust ports of my demos are larger than their C++
 equivalents, in terms of Flash footprint. I've been studying this to see whether
 it's (1) inherent, (2) current bugs, or (3) something I'm personally doing
 wrong.
@@ -252,14 +252,24 @@ I have 512kiB of Flash to work with). But that's misleading:
 - 8,519 bytes of that are formatting-related code for generating `panic!`
   messages. I wind up pulling in much of `core::fmt`.
 
-If you subtract that out, the binaries are nearly the same size.  Interestingly,
-the sizes are close *despite* the C++ demo being compiled mostly `-Os` (optimize
-for size), and the Rust demo `-O2` (optimize for speed).
+Why are we generating formatted panic messages? Because they appear on my
+debugger when I screw up, thanks to the `panic_itm` crate. Since C++ doesn't
+have this feature, it's not a fair comparison!
 
-I'd like to find a way to remove support for panic messages from the binary, and
-I bet it exists. However, it's worth noting that having human-readable panic
-messages that can appear in an attached debugger (thanks to the `panic_itm`
-crate) is *immensely helpful.*
+You can get the toolchain to omit all that cruft by defining a `panic_handler`
+that doesn't use the formatted messages, and removing the dependency on
+`panic_itm`. The LTO inliner does its magic and figures out that formatting
+isn't required. And now:
+
+    4498      92  180872  185462   2d476 rust/horiz_tp
+
+35 bytes larger in Flash than the C++ demo. And it's worth noting that, with
+panic formatting removed, both `conway` and `xor_pattern` are *smaller in Rust
+than in C++*.
+
+This is particularly surprising because the C++ demos are being compiled with
+`-Os` (optimize for size), and the Rust demos `-O3` (optimize for speed, unroll
+lots of loops).
 
 ### On memory safety
 
