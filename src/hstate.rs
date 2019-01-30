@@ -1,3 +1,5 @@
+//! Interrupt handler for horizontal retrace.
+
 use stm32f4::stm32f407 as device;
 
 use core::sync::atomic::Ordering;
@@ -11,6 +13,9 @@ use crate::timing::Timing;
 pub fn hstate_isr() {
     #[cfg(feature = "measurement")]
     crate::measurement::sig_a_set();
+
+    // Start a critical section wrt PendSV here. We're higher priority, so
+    // really this just detects races.
     let shared = acquire_hw(&HPSHARE);
     let hw = &shared.hw;
 
@@ -22,10 +27,12 @@ pub fn hstate_isr() {
                      .cc2if().clear_bit()
                      .cc3if().clear_bit());
 
+    // CC2 indicates start-of-active video.
+    //
+    // THIS PATH IS LATENCY SENSITIVE.
     if sr.cc2if().bit_is_set() {
+        // Only bother doing work if we're not in vblank.
         if vert_state().is_displayed_state() {
-            // Note: we are racing PendSV end-of-rasterization for control of
-            // this lock.
             let params = &shared.xfer;
             let dma_xfer = unsafe { core::mem::transmute(params.dma_cr_bits) };
             start_of_active_video(
@@ -37,7 +44,13 @@ pub fn hstate_isr() {
         }
     }
 
+    // CC3 indicates end-of-active video
+    //
+    // This path is not latency sensitive, but should be pretty quick to give
+    // PendSV time to do stuff.
     if sr.cc3if().bit_is_set() {
+        // We have work to do regardless of vertical state, because this routine
+        // maintains the vertical state itself!
         let line = end_of_active_video(
             &hw.tim1,
             &hw.tim4,
@@ -52,11 +65,17 @@ pub fn hstate_isr() {
     crate::measurement::sig_a_clear();
 }
 
+/// Routine for handling SAV (start-of-active video). This needs to do as little
+/// work as possible to avoid messing up scanout timing.
 fn start_of_active_video(dma: &device::DMA2,
                          drq_timer: &device::TIM1,
                          dma_xfer: device::dma2::s5cr::W,
                          use_timer_drq: bool) {
+    // This routine is currently 11 instructions in a release build.
+
     // Clear stream 5 flags. HIFCR is a write-1-to-clear register.
+    //
+    // (Write a constant to a fixed address.)
     dma.hifcr.write(|w| w
                     .cdmeif5().set_bit()
                     .cteif5().set_bit()
@@ -64,10 +83,14 @@ fn start_of_active_video(dma: &device::DMA2,
                     .ctcif5().set_bit());
 
     // Start the countdown for first DRQ, if relevant.
+    //
+    // (Write a slightly computed value to a fixed address.)
     drq_timer.cr1.write(|w| w.urs().counter_only()
                         .cen().bit(use_timer_drq));
 
     // Configure DMA stream.
+    //
+    // (Write a value passed in a register to a fixed address.)
     dma.s5cr.write(|w| { *w = dma_xfer; w });
 }
 
@@ -90,17 +113,22 @@ fn end_of_active_video(drq_timer: &device::TIM1,
                         .cen().clear_bit());
 
     // Apply timing changes requested by the last rasterizer.
-    // TODO: TIM4 CCR2 writes are unsafe, which is a bug
-    h_timer.ccr2.write(|w| unsafe {
-        w.bits(
-            (current_timing.sync_pixels
-            + current_timing.back_porch_pixels - current_timing.video_lead)
-            as u32
-            //+ working_buffer_shape.offset TODO am I implementing offset?
-        )
-    });
+    // TODO: actually, if I'm not implementing the 'offset' field I used for
+    // display distortion effects, I don't need to do this every scanline.
+    if false {
+        // TODO: TIM4 CCR2 writes are unsafe, which is a bug
+        h_timer.ccr2.write(|w| unsafe {
+            w.bits(
+                (current_timing.sync_pixels
+                 + current_timing.back_porch_pixels - current_timing.video_lead)
+                as u32
+                //+ working_buffer_shape.offset TODO am I implementing offset?
+            )
+        });
+    }
 
-    // Pend a PendSV to process hblank tasks.
+    // Pend a PendSV to process hblank tasks. This can happen any time during
+    // this routine -- it won't take effect until we return.
     cortex_m::peripheral::SCB::set_pendsv();
 
     // We've finished this line; figure out what to do on the next one.
@@ -109,16 +137,14 @@ fn end_of_active_video(drq_timer: &device::TIM1,
     if next_line == current_timing.vsync_start_line ||
             next_line == current_timing.vsync_end_line {
         // Either edge of vsync pulse.
-        {
-            // TODO: really unfortunate toggle code. File bug.
-            let odr = gpiob.odr.read().bits();
-            let mask = 1 << 7;
-            gpiob.bsrr.write(|w| unsafe {
-                w.bits(
-                    (!odr & mask) | ((odr & mask) << 16)
-                )
-            });
-        }
+        // TODO: really unfortunate toggle code. File bug.
+        let odr = gpiob.odr.read().bits();
+        let mask = 1 << 7;
+        gpiob.bsrr.write(|w| unsafe {
+            w.bits(
+                (!odr & mask) | ((odr & mask) << 16)
+            )
+        });
     } else if next_line + 1 == current_timing.video_start_line {
         // We're one line before scanout begins -- need to start rasterizing.
         set_vert_state(VState::Starting);
