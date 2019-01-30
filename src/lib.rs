@@ -1,7 +1,7 @@
 #![no_std]
 
-pub mod armv7m;
-pub mod stm32;
+mod armv7m;
+mod stm32;
 mod startup;
 
 pub mod util;
@@ -13,9 +13,9 @@ pub mod measurement;
 
 pub mod rast;
 
-pub mod hstate;
-pub mod bg_rast;
-pub mod shock;
+mod hstate;
+mod bg_rast;
+mod shock;
 pub mod timing;
 
 use stm32f4::stm32f407 as device;
@@ -606,3 +606,6 @@ fn configure_h_timer(timing: &timing::Timing,
                    .cc1p().bit(timing.hsync_polarity == Polarity::Negative));
 }
 
+pub use crate::bg_rast::maintain_raster_isr as pendsv_raster_isr;
+pub use crate::shock::shock_absorber_isr as tim3_shock_isr;
+pub use crate::hstate::hstate_isr as tim4_horiz_isr;
