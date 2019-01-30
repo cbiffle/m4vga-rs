@@ -85,7 +85,7 @@ pub static SVGA_800_600: Timing = Timing {
     line_pixels      : 1056,
     sync_pixels      : 128,
     back_porch_pixels: 88,
-    video_lead       : 23,
+    video_lead       : 20,
     video_pixels     : 800,
     hsync_polarity   : Polarity::Positive,
 
