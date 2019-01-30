@@ -117,15 +117,12 @@ fn end_of_active_video(drq_timer: &device::TIM1,
     // TODO: actually, if I'm not implementing the 'offset' field I used for
     // display distortion effects, I don't need to do this every scanline.
     if false {
-        // Safety: only unsafe due to upstream bug. TODO
-        h_timer.ccr2.write(|w| unsafe {
-            w.bits(
+        h_timer.ccr2.write(|w| w.ccr2().bits(
                 (current_timing.sync_pixels
                  + current_timing.back_porch_pixels - current_timing.video_lead)
                 as u32
                 //+ working_buffer_shape.offset TODO am I implementing offset?
-            )
-        });
+            ));
     }
 
     // Pend a PendSV to process hblank tasks. This can happen any time during
@@ -141,11 +138,9 @@ fn end_of_active_video(drq_timer: &device::TIM1,
         // TODO: really unfortunate toggle code. File bug.
         let odr = gpiob.odr.read().bits();
         let mask = 1 << 7;
-        // Safety: only unsafe due to upstream bug. TODO
-        gpiob.bsrr.write(|w| unsafe {
-            w.bits(
-                (!odr & mask) | ((odr & mask) << 16)
-            )
+        gpiob.bsrr.write(|w| {
+            use crate::util::stm32::AllWriteExt;
+            w.bits_ext((!odr & mask) | ((odr & mask) << 16))
         });
     } else if next_line + 1 == current_timing.video_start_line {
         // We're one line before scanout begins -- need to start rasterizing.

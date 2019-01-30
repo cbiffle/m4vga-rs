@@ -176,10 +176,12 @@ impl Vga<Idle> {
         let tim4 = &self.mode_state.hstate.tim4;
 
         // Configure tim4 to trigger from tim3 and run forever.
-        tim4.smcr.write(|w| unsafe {
-            // Safety: only unsafe due to upstream bug: SMCR register is
-            // incompletely modeled. TODO
-            w.ts().bits(0b10).sms().bits(0b110)
+        tim4.smcr.write(|w| {
+            use crate::util::stm32::VariantExt;
+            use crate::util::stm32 as device;
+
+            w.ts().variant(device::tim3::smcr::TSW::ITR2)
+                .sms().variant(device::tim3::smcr::SMSW::Trigger)
         });
 
         // Turn on tim4's interrupts.
@@ -612,31 +614,32 @@ fn configure_h_timer(timing: &timing::Timing,
         timing.cycles_per_pixel()
     };
 
-    // Safety: only unsafe due to upstream BUG. TODO
-    tim.psc.write(|w| unsafe { w.bits(apb_cycles_per_pixel as u32 - 1) });
+    tim.psc.write(|w| {
+        use crate::util::stm32::AllWriteExt;
+        w.psc().bits_ext((apb_cycles_per_pixel as u32 - 1) as u16)
+    });
 
-    // Safety: only unsafe due to upstream BUG. TODO
-    tim.arr.write(|w| unsafe { w.bits(timing.line_pixels as u32 - 1) });
+    // TODO: all the timer fields below should be 16 bits, but are 32.
+    // See: https://github.com/stm32-rs/stm32-rs/issues/147
 
-    // Safety: only unsafe due to upstream BUG. TODO
-    tim.ccr1.write(|w| unsafe { w.bits(timing.sync_pixels as u32) });
-    // Safety: only unsafe due to upstream BUG. TODO
-    tim.ccr2.write(|w| unsafe { w.bits(
+    tim.arr.write(|w| w.arr().bits(timing.line_pixels as u32 - 1));
+
+    tim.ccr1.write(|w| w.ccr1().bits(timing.sync_pixels as u32));
+    tim.ccr2.write(|w| w.ccr2().bits(
                 (timing.sync_pixels
                  + timing.back_porch_pixels - timing.video_lead) as u32
-                )});
-    // Safety: only unsafe due to upstream BUG. TODO
-    tim.ccr3.write(|w| unsafe { w.bits(
+                ));
+    tim.ccr3.write(|w| w.ccr3().bits(
                 (timing.sync_pixels
                  + timing.back_porch_pixels + timing.video_pixels) as u32
-                )});
+                ));
 
     tim.ccmr1_output.write(|w| {
-        // Safety: only unsafe due to upstream BUG. TODO
-        unsafe { w.oc1m().bits(0b110); }  // PWM1
-        // Safety: only unsafe due to upstream BUG. TODO
-        unsafe { w.cc1s().bits(0b00); } // output
-        w
+        use crate::util::stm32 as device;
+        use crate::util::stm32::VariantExt;
+
+        w.oc1m().variant(device::tim3::ccmr1_output::OC1MW::Pwm1)
+            .cc1s().variant(device::tim3::ccmr1_output::CC1SW::Output)
     });
 
     tim.ccer.write(|w| w

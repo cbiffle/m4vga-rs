@@ -210,7 +210,7 @@ fn prepare_for_scanout(dma: &device::DMA2,
     dma.s5cr.modify(|_, w| w.en().clear_bit());
 
     // TODO adjust this
-    const DRQ_SHIFT_CYCLES: u32 = 2;
+    const DRQ_SHIFT_CYCLES: u16 = 2;
 
     // TODO oxidation note: okay, the svd2rust register access operations
     // are incredibly awkward for code like this. I'm really really tempted
@@ -248,19 +248,19 @@ fn prepare_for_scanout(dma: &device::DMA2,
     if ctx.cycles_per_pixel > 4 {
         // Adjust reload frequency of TIM1 to accomodate desired pixel clock.
         // (ARR value is period - 1.)
-        let reload = (ctx.cycles_per_pixel - 1) as u32;
-        // Safety: only unsafe due to upstream bug. TODO
-        vtimer.arr.write(|w| unsafe {
-            w.bits(reload)
+        let reload = (ctx.cycles_per_pixel - 1) as u16;
+        vtimer.arr.write(|w| {
+            use crate::util::stm32::AllWriteExt;
+            w.arr().bits_ext(reload)
         });
         // Force an update to reset the timer state.
         vtimer.egr.write(|w| w.ug().set_bit());
         // Configure the timer as *almost* ready to produce a DRQ, less a small
         // value (fudge factor).  Gotta do this after the update event, above,
         // because that clears CNT.
-        // Safety: only unsafe due to upstream bug. TODO
-        vtimer.cnt.write(|w| unsafe {
-            w.bits(reload - DRQ_SHIFT_CYCLES)
+        vtimer.cnt.write(|w| {
+            use crate::util::stm32::AllWriteExt;
+            w.cnt().bits_ext(reload - DRQ_SHIFT_CYCLES)
         });
         vtimer.sr.reset();
 

@@ -162,3 +162,196 @@ unsafe impl CopyHack for device::dma2::s4cr::W {}
 unsafe impl CopyHack for device::dma2::s5cr::W {}
 unsafe impl CopyHack for device::dma2::s6cr::W {}
 unsafe impl CopyHack for device::dma2::s7cr::W {}
+
+/// Trait for welding variant support onto an un-modeled register field.
+pub trait VariantExt<V> {
+    type W;
+    fn variant(self, variant: V) -> Self::W;
+}
+
+/// Trait for welding arbitrary write support onto an un-modeled register field.
+pub trait AllWriteExt<T> {
+    type W;
+    fn bits_ext(self, value: T) -> Self::W;
+}
+
+pub mod tim1 {
+    pub mod arr {
+        use stm32f4::stm32f407::tim1::arr as device;
+
+        impl<'a> crate::util::stm32::AllWriteExt<u16> for device::_ARRW<'a> {
+            type W = &'a mut device::W;
+            fn bits_ext(self, value: u16) -> Self::W {
+                unsafe { self.bits(value) }
+            }
+        }
+    }
+    pub mod cnt {
+        use stm32f4::stm32f407::tim1::cnt as device;
+
+        impl<'a> crate::util::stm32::AllWriteExt<u16> for device::_CNTW<'a> {
+            type W = &'a mut device::W;
+            fn bits_ext(self, value: u16) -> Self::W {
+                unsafe { self.bits(value) }
+            }
+        }
+    }
+}
+
+pub mod tim3 {
+    pub mod smcr {
+        use stm32f4::stm32f407::tim3::smcr as device;
+
+        #[allow(non_camel_case_types)]
+        #[derive(Copy, Clone, Debug)]
+        pub enum TSW {
+            // Internal Trigger 0
+            ITR0 = 0b000,
+            // Internal Trigger 1
+            ITR1 = 0b001,
+            // Internal Trigger 2
+            ITR2 = 0b010,
+            // Internal Trigger 3
+            ITR3 = 0b011,
+            // TI1 Edge Detector
+            TI1F_ED = 0b100,
+            // Filtered Timer Input 1
+            TI1FP1 = 0b101,
+            // Filtered Timer Input 2
+            TI2FP2 = 0b110,
+            // External Trigger input
+            ETRF = 0b111,
+        }
+
+        impl<'a> crate::util::stm32::VariantExt<TSW> for device::_TSW<'a> {
+            type W = &'a mut device::W;
+            fn variant(self, variant: TSW) -> Self::W {
+                unsafe { self.bits(variant as u8) }
+            }
+        }
+
+        #[derive(Copy, Clone, Debug)]
+        pub enum SMSW {
+            // 000: Slave mode disabled - if CEN = ‘1 then the prescaler is
+            //      clocked directly by the internal clock.
+            Disabled = 0b000,
+            // 001: Encoder mode 1 - Counter counts up/down on TI2FP1 edge
+            //      depending on TI1FP2 level.
+            Encoder1 = 0b001,
+            // 010: Encoder mode 2 - Counter counts up/down on TI1FP2 edge
+            //      depending on TI2FP1 level.
+            Encoder2 = 0b010,
+            // 011: Encoder mode 3 - Counter counts up/down on both TI1FP1 and
+            //      TI2FP2 edges depending on the level of the other input.
+            Encoder3 = 0b011,
+            // 100: Reset Mode - Rising edge of the selected trigger input
+            //      (TRGI) reinitializes the counter and generates an update of
+            //      the registers.
+            Reset = 0b100,
+            // 101: Gated Mode - The counter clock is enabled when the trigger
+            //      input (TRGI) is high. The counter stops (but is not reset)
+            //      as soon as the trigger becomes low. Both start and stop of
+            //      the counter are controlled.
+            Gated = 0b101,
+            // 110: Trigger Mode - The counter starts at a rising edge of the
+            //      trigger TRGI (but it is not reset). Only the start of the
+            //      counter is controlled.
+            Trigger = 0b110,
+            // 111: External Clock Mode 1 - Rising edges of the selected trigger
+            //      (TRGI) clock the counter.
+            External = 0b111,
+        }
+
+        impl<'a> crate::util::stm32::VariantExt<SMSW> for device::_SMSW<'a> {
+            type W = &'a mut device::W;
+            fn variant(self, variant: SMSW) -> Self::W {
+                unsafe { self.bits(variant as u8) }
+            }
+        }
+    }
+    pub mod psc {
+        use stm32f4::stm32f407::tim3::psc as device;
+
+        impl<'a> crate::util::stm32::AllWriteExt<u16> for device::_PSCW<'a> {
+            type W = &'a mut device::W;
+            fn bits_ext(self, value: u16) -> Self::W {
+                unsafe { self.bits(value) }
+            }
+        }
+    }
+    pub mod ccmr1_output {
+        use stm32f4::stm32f407::tim3::ccmr1_output as device;
+
+        #[derive(Copy, Clone, Debug)]
+        pub enum OC1MW {
+            // 000: Frozen - The comparison between the output compare register
+            //      TIMx_CCR1 and the counter TIMx_CNT has no effect on the
+            //      outputs.(this mode is used to generate a timing base).
+            Frozen = 0b000,
+            // 001: Set channel 1 to active level on match. OC1REF signal is
+            //      forced high when the counter TIMx_CNT matches the
+            //      capture/compare register 1 (TIMx_CCR1).
+            Set1Active = 0b001,
+            // 010: Set channel 1 to inactive level on match. OC1REF signal is
+            //      forced low when the counter TIMx_CNT matches the
+            //      capture/compare register 1 (TIMx_CCR1).
+            Set1Inactive = 0b010,
+            // 011: Toggle - OC1REF toggles when TIMx_CNT=TIMx_CCR1.
+            Toggle = 0b011,
+            // 100: Force inactive level - OC1REF is forced low.
+            Inactive = 0b100,
+            // 101: Force active level - OC1REF is forced high.
+            Active = 0b101,
+            // 110: PWM mode 1 - In upcounting, channel 1 is active as long as
+            //      TIMx_CNT<TIMx_CCR1 else inactive. In downcounting, channel 1
+            //      is inactive (OC1REF=‘0) as long as TIMx_CNT>TIMx_CCR1 else
+            //      active (OC1REF=1).
+            Pwm1 = 0b110,
+            // 111: PWM mode 2 - In upcounting, channel 1 is inactive as long as
+            //      TIMx_CNT<TIMx_CCR1 else active. In downcounting, channel 1
+            //      is active as long as TIMx_CNT>TIMx_CCR1 else inactive.
+            Pwm2 = 0b111,
+        }
+
+        impl<'a> crate::util::stm32::VariantExt<OC1MW> for device::_OC1MW<'a> {
+            type W = &'a mut device::W;
+            fn variant(self, variant: OC1MW) -> Self::W {
+                unsafe { self.bits(variant as u8) }
+            }
+        }
+
+        #[derive(Copy, Clone, Debug)]
+        pub enum CC1SW {
+            // 00: CC1 channel is configured as output.
+            Output = 0b00,
+            // 01: CC1 channel is configured as input, IC1 is mapped on TI1.
+            InputTi1 = 0b01,
+            // 10: CC1 channel is configured as input, IC1 is mapped on TI2.
+            InputTi2 = 0b10,
+            // 11: CC1 channel is configured as input, IC1 is mapped on TRC.
+            //     This mode is working only if an internal trigger input is
+            //     selected through TS bit (TIMx_SMCR register)
+            InputTrc = 0b11,
+        }
+
+        impl<'a> crate::util::stm32::VariantExt<CC1SW> for device::_CC1SW<'a> {
+            type W = &'a mut device::W;
+            fn variant(self, variant: CC1SW) -> Self::W {
+                unsafe { self.bits(variant as u8) }
+            }
+        }
+
+    }
+}
+
+pub mod gpiob {
+    pub mod bsrr {
+        use stm32f4::stm32f407::gpiob::bsrr as device;
+        impl<'a> crate::util::stm32::AllWriteExt<u32> for &'a mut device::W {
+            type W = &'a mut device::W;
+            fn bits_ext(self, value: u32) -> Self::W {
+                unsafe { self.bits(value) }
+            }
+        }
+    }
+}
