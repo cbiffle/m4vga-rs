@@ -7,11 +7,12 @@ pub mod util;
 #[cfg(feature = "measurement")]
 pub mod measurement;
 
+pub mod copy_words;
+
 mod armv7m;
 mod stm32;
 mod startup;
 
-mod copy_words;
 #[allow(unused)] // TODO
 mod font_10x16;
 
