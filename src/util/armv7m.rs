@@ -3,10 +3,11 @@
 //! # Interrupt management
 //!
 //! The `enable_irq`, `disable_irq`, and `clear_pending_irq` functions provide
-//! enhanced atomic interrupt status management. The `cortex_m` operation to
-//! disable interrupts, for example, does not actually guarantee that the
-//! interrupt is disabled by the time the function returns, leading to possible
-//! data races. `disable_irq` fixes this.
+//! enhanced atomic interrupt status management. The equivalent operations from
+//! the `cortex_m` crate do not guarantee atomicity. For example, when disabling
+//! an interrupt, the interrupt *can still fire* after `disable` returns,
+//! because `disable` does not use the correct memory barrier instructions.
+//! `disable_irq` fixes this, and so for the other functions in this module.
 //!
 //! The methods used are derived from the ARM document *ARM Cortex-M Programming
 //! Guide to Memory Barrier Instructions*.

@@ -186,7 +186,7 @@ fn update_scan_buffer(len_bytes: usize,
     // tearing but nothing worse. We tolerate the potential for now.
     let scan = unsafe { &mut GLOBAL_SCANOUT_BUFFER };
 
-    crate::copy_words::copy_words(
+    crate::util::copy_words::copy_words(
         &working[..count],
         &mut scan[..count],
         );

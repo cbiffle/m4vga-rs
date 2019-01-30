@@ -7,10 +7,6 @@ pub mod util;
 #[cfg(feature = "measurement")]
 pub mod measurement;
 
-pub mod copy_words;
-
-mod armv7m;
-mod stm32;
 mod startup;
 
 #[allow(unused)] // TODO
@@ -27,8 +23,8 @@ use cortex_m::peripheral::scb::SystemHandler;
 
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use crate::armv7m::{enable_irq, disable_irq, clear_pending_irq};
-use crate::stm32::{copy_interrupt, UsefulDivisor, configure_clocks};
+use crate::util::armv7m::{enable_irq, disable_irq, clear_pending_irq};
+use crate::util::stm32::{UsefulDivisor, CopyHack, configure_clocks};
 use crate::util::spin_lock::{SpinLock, SpinLockGuard};
 use crate::rast::{RasterCtx, TargetBuffer};
 use crate::timing::Polarity;
@@ -581,10 +577,10 @@ fn disable_h_timer(nvic: &mut cortex_m::peripheral::NVIC,
                    rcc: &device::RCC,
                    reset: impl FnOnce(&mut device::rcc::apb1rstr::W)
                                -> &mut device::rcc::apb1rstr::W) {
-    disable_irq(nvic, copy_interrupt(i));
+    disable_irq(nvic, i.copy_hack());
     rcc.apb1rstr.modify(|_, w| reset(w));
     cortex_m::asm::dsb();
-    clear_pending_irq(copy_interrupt(i));
+    clear_pending_irq(i.copy_hack());
 }
 
 /// Utility for configuring one of our horizontal retrace timers. It's set up

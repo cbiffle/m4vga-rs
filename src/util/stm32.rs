@@ -1,16 +1,11 @@
-//! Augmented STM32 operations
+//! Augmented STM32 operations.
+//!
+//! This is a set of extensions and workarounds for the `stm32f4` crate.
 
 use stm32f4::stm32f407 as device;
 
-/// For reasons I cannot fathom, the stm32 `Interrupt` type is neither `Copy` or
-/// `Clone`.
-///
-/// There I fixed it.
-pub fn copy_interrupt(i: &device::Interrupt) -> device::Interrupt {
-    // hold my beer
-    unsafe { core::ptr::read(i) }
-}
-
+/// A representation of the clock config parameters for the STM32F4 RCC when
+/// using the High Speed External option with the PLL.
 pub struct ClockConfig {
     pub crystal_hz: f32,
     pub crystal_divisor: u8,
@@ -25,7 +20,7 @@ pub struct ClockConfig {
     pub flash_latency: device::flash::acr::LATENCYW,
 }
 
-// have to do this manually because svd2rust thinks enums have identity
+/// I have to do this manually because svd2rust thinks enums have identity.
 impl Clone for ClockConfig {
     fn clone(&self) -> Self {
         ClockConfig {
@@ -49,6 +44,11 @@ macro_rules! block_until {
     ($condition:expr) => { block_while!(!$condition) };
 }
 
+/// Applies the settings described in `cfg` to the `rcc` and `flash`. (The flash
+/// controller gets involved because we have to adjust wait states.)
+///
+/// The algorithm used can transition from any valid clock config to any other,
+/// by switching to the internal high-speed oscillator in between modes.
 pub fn configure_clocks(rcc: &device::RCC,
                         flash: &device::FLASH,
                         cfg: &ClockConfig) {
@@ -102,6 +102,10 @@ pub trait UsefulDivisor {
     fn divisor(&self) -> usize;
 }
 
+/// Slap a copy operation onto types that aren't Copy for some reason.
+///
+/// This trait is `unsafe` because you had better know what you're doing if you
+/// implement it for a foreign type.
 pub unsafe trait CopyHack: Sized {
     fn copy_hack(&self) -> Self {
         unsafe {
@@ -146,4 +150,4 @@ impl UsefulDivisor for device::rcc::cfgr::PPRE2W {
 unsafe impl CopyHack for device::rcc::cfgr::PPRE2W {}
 unsafe impl CopyHack for device::flash::acr::LATENCYW {}
 unsafe impl CopyHack for device::rcc::pllcfgr::PLLPW {}
-
+unsafe impl CopyHack for device::Interrupt {}

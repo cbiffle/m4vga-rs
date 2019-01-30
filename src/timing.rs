@@ -1,4 +1,4 @@
-use crate::stm32;
+use crate::util::stm32;
 use stm32f4::stm32f407 as device;
 
 pub const MIN_CYCLES_PER_PIXEL: usize = 4;
