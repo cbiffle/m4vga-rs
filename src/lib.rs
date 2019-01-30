@@ -470,13 +470,6 @@ static TIMING: SpinLock<Option<timing::Timing>> = SpinLock::new(None);
 /// by hstate.
 static RASTER: rast::IRef = rast::IRef::new();
 
-/// Equivalent of `rast::TargetBuffer`, but as words to ensure alignment for
-/// certain of our high-throughput routines.
-type WorkingBuffer = [u32; WORKING_BUFFER_SIZE];
-
-/// Number of words in a `WorkingBuffer`.
-const WORKING_BUFFER_SIZE: usize = rast::TARGET_BUFFER_SIZE / 4;
-
 /// Turns off sync outputs. This used to be public API, but I never use it, so.
 fn sync_off(gpiob: &device::GPIOB) {
     gpiob.moder.modify(|_, w| w

@@ -6,9 +6,16 @@ use stm32f4::stm32f407 as device;
 use core::sync::atomic::Ordering;
 
 use crate::util::spin_lock::SpinLock;
-use crate::{WorkingBuffer, WORKING_BUFFER_SIZE, vert_state, acquire_hw, HPSHARE, NextTransfer, TIMING, LINE, RASTER};
+use crate::{vert_state, acquire_hw, HPSHARE, NextTransfer, TIMING, LINE, RASTER};
 use crate::timing::{Timing, MIN_CYCLES_PER_PIXEL};
 use crate::rast::{RasterCtx, TargetBuffer};
+
+/// Equivalent of `rast::TargetBuffer`, but as words to ensure alignment for
+/// certain of our high-throughput routines.
+type WorkingBuffer = [u32; WORKING_BUFFER_SIZE];
+
+/// Number of words in a `WorkingBuffer`.
+const WORKING_BUFFER_SIZE: usize = crate::rast::TARGET_BUFFER_SIZE / 4;
 
 /// State used by the raster maintenance (PendSV) ISR.
 struct RasterState {
@@ -25,8 +32,25 @@ struct RasterState {
     raster_ctx: RasterCtx,
 }
 
+/// Spinlock coordinating access to raster state. This state is exclusive to
+/// this ISR and this spinlock serves to detect reentrant execution of the ISR,
+/// which is probably overkill.
 static mut RASTER_STATE: SpinLock<RasterState> = SpinLock::new(RasterState {
-    working_buffer: unsafe { &mut GLOBAL_WORKING_BUFFER },
+    // Safety: this is unsafe to reference a static mut, but the static mut is
+    // scope-confined such that we can guarantee we have the only reference to
+    // it -- so this is safe.
+    working_buffer: unsafe {
+        /// Rasterization working buffer in closely-coupled RAM. During
+        /// rasterization, the CPU can scribble into this buffer freely without
+        /// interfering with any ongoing DMA transfer.
+        ///
+        /// This is defined here as proof that we don't touch it elsewhere,
+        /// except through the reference we're recording.
+        #[link_section = ".local_ram"]
+        static mut GLOBAL_WORKING_BUFFER: WorkingBuffer =
+            [0; WORKING_BUFFER_SIZE];
+        &mut GLOBAL_WORKING_BUFFER
+    },
     update_scan_buffer: false,
     raster_ctx: RasterCtx {
         cycles_per_pixel: 4,
@@ -35,27 +59,6 @@ static mut RASTER_STATE: SpinLock<RasterState> = SpinLock::new(RasterState {
     },
 });
 
-/// Rasterization working buffer in closely-coupled RAM. During rasterization,
-/// the CPU can scribble into this buffer freely without interfering with any
-/// ongoing DMA transfer.
-///
-/// A reference to this is stashed in `RASTER_STATE`; you don't want to touch
-/// this directly. (I'd make it an anonymous array but that would prevent me
-/// from using `link_section`.)
-#[link_section = ".local_ram"]
-static mut GLOBAL_WORKING_BUFFER: WorkingBuffer = [0; WORKING_BUFFER_SIZE];
-
-/// Casting from a word-aligned working buffer to a byte-aligned pixel buffer.
-fn working_buffer_as_u8(words: &mut WorkingBuffer) -> &mut TargetBuffer {
-    // Safety: these structures have exactly the same shape, and when we use it
-    // as a buffer of u32, we're doing it only as a fast way of moving u8. The
-    // main portability risk here is endianness, but so be it.
-    unsafe {
-        core::mem::transmute(words)
-    }
-}
-
-
 /// Rasterization scanout buffer in the smaller AHB-attached SRAM. This is the
 /// source for scanout DMA.
 ///
@@ -63,15 +66,18 @@ fn working_buffer_as_u8(words: &mut WorkingBuffer) -> &mut TargetBuffer {
 /// `GLOBAL_WORKING_BUFFER`.
 ///
 /// Read asynchronously by DMA during scanout.
+///
+/// TODO: I would very much like to model this as a ReadWriteLock, with the DMA
+/// holding the read lock until it completes -- but there's some plumbing I need
+/// to do first.
 #[link_section = ".scanout_ram"]
 static mut GLOBAL_SCANOUT_BUFFER: WorkingBuffer = [0; WORKING_BUFFER_SIZE];
 
-
 /// Entry point for the raster maintenance ISR, invoked as PendSV.
 pub fn maintain_raster_isr() {
-    // Safety: RASTER_STATE is mut only because rustc is really picky about
-    // seeing uses of mut statics like GLOBAL_WORKING_BUFFER in the initializers
-    // of non-mut statics.
+    // Safety: RASTER_STATE is mut only because it captures a &mut to
+    // GLOBAL_WORKING_BUFFER in its initializer, and rustc is picky about that
+    // pattern. This access is safe because we don't circumvent the spinlock.
     let mut state = unsafe { RASTER_STATE.try_lock() }.expect("pendsv state");
 
     let vs = vert_state();
@@ -82,32 +88,47 @@ pub fn maintain_raster_isr() {
     // scanout machine so that we can replace them as well.
     //
     // This writes to the scanout buffer *and* accesses AHB/APB peripherals, so
-    // it *cannot* run concurrently with scanot -- so we do it first, during
-    // hblank.
+    // it *cannot* run concurrently with scanout -- so we do it first, here,
+    // during hblank.
     if vs.is_displayed_state() {
         {
+            // This is a critical section wrt HState -- y'know, the one
+            // interrupt we can't ever delay. ;-) The execution time of the code
+            // in this section does not depend on any user choices -- not on the
+            // rasterizer, line length, etc. So it stays pretty reliable.
+
             #[cfg(feature = "measurement")]
-            crate::measurement::sig_b_set();
-            let mut share = acquire_hw(&HPSHARE);
-            let hw = &share.hw;
-            let (dma_cr, use_timer) = {
-                prepare_for_scanout(
-                    &hw.dma2,
-                    &hw.tim1,
-                    &state.raster_ctx,
-                )
-            };
-            // [OX] TODO: omg there is no actual way to get the bits out of this
+            crate::measurement::sig_b_set();  // signal critical section entry
+
+            let mut share = acquire_hw(&HPSHARE); // ENTRY
+
+            // Set up *most* of the DMA and TIM parameters for the transfer, but
+            // leave them disabled. This reduces the amount of work required in
+            // the SAV ISR.
+            let (dma_cr, use_timer) = prepare_for_scanout(
+                &share.hw.dma2,
+                &share.hw.tim1,
+                &state.raster_ctx,
+            );
+
+            // Safety: stm32f4 won't let us get the bits out of a W type, which
+            // is clearly a mistake.
             let dma_cr_bits = unsafe { core::mem::transmute(dma_cr) };
 
-            // Note: we are now racing hstate SAV for control of this lock.
+            // Record transfer parameters where SAV can find them.
             share.xfer = NextTransfer {
                 dma_cr_bits, 
                 use_timer,
             };
+
             #[cfg(feature = "measurement")]
-            crate::measurement::sig_b_clear();
+            crate::measurement::sig_b_clear();  // signal critical section exit
         }
+
+        // HState can fire now
+
+        // If the rasterizer produced new data, move it into scanout RAM while
+        // the bus is quiet.
         if state.update_scan_buffer {
             update_scan_buffer(
                 state.raster_ctx.target_range.end,
@@ -117,7 +138,7 @@ pub fn maintain_raster_isr() {
     }
 
     // Allow the application to do additional work during what's left of hblank.
-    //vga_hblank_interrupt();
+    //vga_hblank_interrupt(); TODO implement this someday, Glitch needs it
 
     // Second, rasterize the *next* line, if there's a useful next line.
     // Rasterization can take a while, and may run concurrently with scanout.
@@ -125,22 +146,26 @@ pub fn maintain_raster_isr() {
     // will find and apply them.
     if vs.is_rendered_state() {
         #[cfg(feature = "measurement")]
-        crate::measurement::sig_b_set();
+        crate::measurement::sig_b_set();  // signal rasterizer entry
 
+        // Smart pointers are great, but I can't borrow multiple paths from them
+        // as I need to below, so...
         let state = &mut *state;
 
-        // Hold the TIMING lock for as short as possible.
+        // Hold the TIMING lock for just long enough to copy some fields out.
         let Timing { add_cycles_per_pixel, video_start_line, ..} =
             *TIMING.try_lock().expect("pendsv timing").as_mut().unwrap();
 
+        // Run the rasterizer.
         state.update_scan_buffer = rasterize_next_line(
             add_cycles_per_pixel + MIN_CYCLES_PER_PIXEL,
             video_start_line,
             &mut state.raster_ctx,
             &mut state.working_buffer,
         );
+
         #[cfg(feature = "measurement")]
-        crate::measurement::sig_b_clear();
+        crate::measurement::sig_b_clear();  // signal rasterizer exit
     }
 }
 
@@ -148,25 +173,25 @@ pub fn maintain_raster_isr() {
 /// DMA.
 fn update_scan_buffer(len_bytes: usize,
                       working: &mut WorkingBuffer) {
-    if len_bytes > 0 {
-        // We're going to move words, so round up to find the number of words to
-        // move.
-        //
-        // Note: the user could pass in any value for `len_bytes`, but it will
-        // get bounds-checked below when used as a slice index.
-        let count = (len_bytes + 3) / 4;
+    // We're going to move words, so round up to find the number of words to
+    // move.
+    //
+    // Note: the user could pass in any value for `len_bytes`, but it will
+    // get bounds-checked below when used as a slice index.
+    let count = (len_bytes + 3) / 4;
 
-        let scan = unsafe { &mut GLOBAL_SCANOUT_BUFFER };
+    // Safety: this might race DMA as written. That would cause display
+    // tearing but nothing worse. We tolerate the potential for now.
+    let scan = unsafe { &mut GLOBAL_SCANOUT_BUFFER };
 
-        crate::copy_words::copy_words(
-            &working[..count],
-            &mut scan[..count],
+    crate::copy_words::copy_words(
+        &working[..count],
+        &mut scan[..count],
         );
 
-        // Terminate with a word of black, to ensure that outputs return to
-        // black level for hblank.
-        scan[count] = 0;
-    }
+    // Terminate with a word of black, to ensure that outputs return to
+    // black level for hblank.
+    scan[count] = 0;
 }
 
 /// Sets up the scanout configuration. This is done well in advance of the
@@ -244,6 +269,8 @@ fn prepare_for_scanout(dma: &device::DMA2,
             // Okay, this is legitimately unsafe. ;-)
             w.bits(0x40021015)  // High byte of GPIOE ODR (hack hack)
         });
+        // Safety: as written, this might race scanout buffer updates. This will
+        // cause no more than tearing, so we tolerate it for now.
         dma.s5m0ar.write(|w| unsafe {
             w.bits(&GLOBAL_SCANOUT_BUFFER as *const u32 as u32)
         });
@@ -277,6 +304,9 @@ fn prepare_for_scanout(dma: &device::DMA2,
     } else {
         // Note that we're using memory as the peripheral side.
         // This DMA controller is a little odd.
+
+        // Safety: as written, this might race scanout buffer updates. This will
+        // cause no more than tearing, so we tolerate it for now.
         dma.s5par.write(|w| unsafe {
             w.bits(&GLOBAL_SCANOUT_BUFFER as *const u32 as u32)
         });
@@ -315,6 +345,8 @@ fn prepare_for_scanout(dma: &device::DMA2,
     }
 }
 
+/// Run the rasterizer to generate the next line, if required. (If
+/// `ctx.repeat_lines` is set, it's simply decremented instead.)
 #[must_use = "the update flag is pretty important"]
 fn rasterize_next_line(cycles_per_pixel: usize,
                        video_start_line: usize,
@@ -343,5 +375,15 @@ fn rasterize_next_line(cycles_per_pixel: usize,
     } else {  // repeat_lines > 0
         ctx.repeat_lines -= 1;
         false
+    }
+}
+
+/// Casting from a word-aligned working buffer to a byte-aligned pixel buffer.
+fn working_buffer_as_u8(words: &mut WorkingBuffer) -> &mut TargetBuffer {
+    // Safety: these structures have exactly the same shape, and when we use it
+    // as a buffer of u32, we're doing it only as a fast way of moving u8. The
+    // main portability risk here is endianness, but so be it.
+    unsafe {
+        core::mem::transmute(words)
     }
 }
