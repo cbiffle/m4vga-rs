@@ -14,7 +14,7 @@ use core::sync::atomic::AtomicUsize;
 use stm32f4;
 
 use stm32f4::stm32f407::interrupt;
-use m4vga::util::rw_lock::{ReadWriteLock, TryLockError};
+use m4vga::util::rw_lock::ReadWriteLock;
 
 // this can go in the default SRAM
 static mut BUF0: [u32; 800 * 600 / 32] = [0; 800*600/32];
@@ -41,13 +41,7 @@ fn main() -> ! {
                 #[cfg(feature = "measurement")]
                 m4vga::measurement::sig_d_set();
 
-                let fg = loop {
-                    match fg.try_lock() {
-                        Ok(fg) => break fg,
-                        Err(TryLockError::Race) => continue,
-                        Err(_) => panic!("fg unavailable"),
-                    }
-                };
+                let fg = fg.lock_uncontended().expect("fg unavail");
 
                 #[cfg(feature = "measurement")]
                 m4vga::measurement::sig_d_clear();

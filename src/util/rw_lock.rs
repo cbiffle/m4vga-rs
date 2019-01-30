@@ -86,6 +86,18 @@ impl<T: ?Sized> ReadWriteLock<T> {
         }).map_err(|_| TryLockError::Race)
     }
 
+    /// Locks `self` for reading, retrying on races but failing on actual
+    /// contention.
+    pub fn lock_uncontended(&self) -> Result<Guard<T>, ()> {
+        loop {
+            match self.try_lock() {
+                Ok(guard) => return Ok(guard),
+                Err(TryLockError::Race) => continue,
+                Err(_) => return Err(())
+            }
+        }
+    }
+
     /// Locks `self` for reading, spinning forever if necessary.
     pub fn lock(&self) -> Guard<T> {
         loop {
