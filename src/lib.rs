@@ -248,9 +248,9 @@ impl Vga<Sync> {
     /// During the execution of `scope` the application has access to the driver
     /// in a different state, `Vga<Ready>`, which exposes additional operations.
     pub fn with_raster<R>(&mut self,
-                          mut rast: impl for<'c> FnMut(usize,
-                                                       &'c mut TargetBuffer,
-                                                       &'c mut RasterCtx)
+                          mut rast: impl FnMut(usize,
+                                               &mut TargetBuffer,
+                                               &mut RasterCtx)
                                          + Send,
                           scope: impl FnOnce(&mut Vga<Live>) -> R)
         -> R

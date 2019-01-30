@@ -109,9 +109,7 @@ impl IRef {
                               val: &'env mut F,
                               scope: impl FnOnce() -> R)
         -> R
-    where F: for<'isr> FnMut(usize,
-                             &'isr mut TargetBuffer,
-                             &'isr mut RasterCtx) + Send + 'env,
+    where F: FnMut(usize, &mut TargetBuffer, &mut RasterCtx) + Send + 'env,
     {
         let r = self.state.compare_exchange(
             EMPTY,
@@ -164,21 +162,12 @@ impl IRef {
     ///
     /// This operation will never busy-wait (unless, of course, `body` contains
     /// code that will busy-wait).
-    ///
-    /// # Note
-    ///
-    /// The `body` closure must be valid for any possible reference lifetime,
-    /// because it is not permitted to make assumptions about how long the
-    /// donated reference lives. In particular, the donated reference is *not*
-    /// `'static` even if `self` is, because that would allow it to leak.
-    /// Omitting the `for<'a>` silently allows this bug by inferring the
-    /// lifetime of `self` -- do not be tempted.
     pub fn observe<R, F>(&self,
                          body: F)
         -> Option<R>
-    where F: for<'e> FnOnce(&'e mut (dyn for<'r> FnMut(usize,
-                                                       &'r mut TargetBuffer,
-                                                       &'r mut RasterCtx) + Send))
+    where F: FnOnce(&mut (dyn FnMut(usize,
+                                    &mut TargetBuffer,
+                                    &mut RasterCtx) + Send))
              -> R
     {
         self.state
@@ -203,8 +192,8 @@ impl IRef {
                 let result = {
                     let r = self.contents.get();
                     // We do *not* know the correct lifetime for the &mut.  This
-                    // is why the `body` closure is `for<'a>`.
-                    let r: &mut (dyn for<'r> FnMut(_, &'r mut _, &'r mut _)
+                    // is why the `body` closure is (implicitly) `for<'a>`.
+                    let r: &mut (dyn FnMut(_, &mut _, &mut _)
                                  + Send) =
                         unsafe { core::mem::transmute(r) };
                     body(r)
