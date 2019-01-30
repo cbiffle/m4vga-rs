@@ -11,9 +11,10 @@
 #![no_std]
 #![no_main]
 
-// Demo mains must elect one panic-handler crate. Here we use the ITM one, which
-// is low-overhead.
+#[cfg(feature = "panic-itm")]
 extern crate panic_itm;
+#[cfg(feature = "panic-halt")]
+extern crate panic_halt;
 
 use stm32f4;
 

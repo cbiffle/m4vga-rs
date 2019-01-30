@@ -229,47 +229,38 @@ same API in `m4vgalib`. But I wouldn't, because...
 
 ### On binary size
 
-Out of the box, the Rust ports of my demos are larger than their C++
-equivalents, in terms of Flash footprint. I've been studying this to see whether
-it's (1) inherent, (2) current bugs, or (3) something I'm personally doing
-wrong.
+Rust has a reputation for producing larger binaries than C++ -- a reputation
+that is largely undeserved.
 
-A naive comparison casts Rust in a bad light: running `arm-none-eabi-size` on
-the current versions of `horiz_tp` written in each language, we get:
+If you run a release build and run `size`, you will find binaries that are
+larger than their C++ equivalents. For example, here's a comparison of
+`horiz_tp` written in each language:
 
      text          data     bss     dec     hex filename
      4463            16  179688  184167   2cf67 cpp/horiz_tp
     21010            92  180872  201974   314f6 rust/horiz_tp
 
-21kiB of code vs 4kiB seems like a big change (though it's worth noting that
-I have 512kiB of Flash to work with). But that's misleading:
+This comparison is *misleading*. The C++ codebase goes to some length to avoid
+including extraneous material in Flash -- in particular, it compiles out all
+assert messages.
 
-- 6,763 bytes of that are *string literals*. Why do I have so many string
-  literals? From `panic!` messages. I actually had this problem in C++ at one
-  point, where I use `assert` liberally. The C++ binary cheats by dropping these
-  strings from the final binary.
+I don't have Rust configured this way by default, because I like getting panic
+messages through my debugger when I mess up. But this means each binary contains
+all the panic strings, plus all the message formatting code. If you would like
+to produce smaller binaries, and are willing to sacrifice panic messages, you
+need to build with a different feature set:
 
-- 8,519 bytes of that are formatting-related code for generating `panic!`
-  messages. I wind up pulling in much of `core::fmt`.
+    $ cargo build --release --no-default-features --features panic-halt
 
-Why are we generating formatted panic messages? Because they appear on my
-debugger when I screw up, thanks to the `panic_itm` crate. Since C++ doesn't
-have this feature, it's not a fair comparison!
+In this mode, the binaries are much smaller:
 
-You can get the toolchain to omit all that cruft by defining a `panic_handler`
-that doesn't use the formatted messages, and removing the dependency on
-`panic_itm`. The LTO inliner does its magic and figures out that formatting
-isn't required. And now:
+    text    data     bss     dec     hex filename
+    4366     104  180860  185330   2d3f2 horiz_tp
+    4404     104  180796  185304   2d3d8 xor_pattern
+    6688     104  180152  186944   2da40 conway
 
-    4498      92  180872  185462   2d476 rust/horiz_tp
-
-35 bytes larger in Flash than the C++ demo. And it's worth noting that, with
-panic formatting removed, both `conway` and `xor_pattern` are *smaller in Rust
-than in C++*.
-
-This is particularly surprising because the C++ demos are being compiled with
-`-Os` (optimize for size), and the Rust demos `-O3` (optimize for speed, unroll
-lots of loops).
+In fact, *the binaries are 3-9% smaller than in C++,* despite compiling the C++
+with `-Os` and the Rust with (the equivalent of) `-O3`.
 
 ### On memory safety
 
