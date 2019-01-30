@@ -9,6 +9,7 @@ mod copy_words;
 #[allow(unused)] // TODO
 mod font_10x16;
 
+#[cfg(feature = "measurement")]
 pub mod measurement;
 
 pub mod rast;
@@ -417,6 +418,10 @@ pub fn init(mut nvic: cm::NVIC,
             )
     -> Vga<Idle>
 {
+
+    #[cfg(feature = "measurement")]
+    measurement::init();
+
     let previous_instance = DRIVER_INIT_FLAG.swap(true, Ordering::SeqCst);
     assert_eq!(previous_instance, false);
 

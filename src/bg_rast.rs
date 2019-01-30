@@ -82,9 +82,10 @@ pub fn maintain_raster_isr() {
     // scanout machine so that we can replace them as well.
     //
     // This writes to the scanout buffer *and* accesses AHB/APB peripherals, so
-    // it *cannot* run concurrently with scanout -- so we do it first, during
     // hblank.
     if vs.is_displayed_state() {
+        #[cfg(feature = "measurement")]
+        crate::measurement::sig_b_set();
         let (dma_cr, use_timer) = {
             // We need to borrow hardware from the horizontal state machine.
             // Keep this scope as small as possible to avoid conflict.
@@ -103,6 +104,8 @@ pub fn maintain_raster_isr() {
             dma_cr_bits, 
             use_timer,
         };
+        #[cfg(feature = "measurement")]
+        crate::measurement::sig_b_clear();
         if state.update_scan_buffer {
             update_scan_buffer(
                 state.raster_ctx.target_range.end,
@@ -119,12 +122,17 @@ pub fn maintain_raster_isr() {
     // As a result, we just stash our results in places where the *next* PendSV
     // will find and apply them.
     if vs.is_rendered_state() {
+        #[cfg(feature = "measurement")]
+        crate::measurement::sig_b_set();
+
         let state = &mut *state;
         state.update_scan_buffer = rasterize_next_line(
             &*TIMING.try_lock().expect("pendsv timing").as_mut().unwrap(),
             &mut state.raster_ctx,
             &mut state.working_buffer,
         );
+        #[cfg(feature = "measurement")]
+        crate::measurement::sig_b_clear();
     }
 }
 

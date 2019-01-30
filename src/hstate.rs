@@ -9,6 +9,8 @@ use crate::timing::Timing;
 ///
 /// Note: this is `etl_stm32f4xx_tim4_handler` in the C++.
 pub fn hstate_isr() {
+    #[cfg(feature = "measurement")]
+    crate::measurement::sig_a_set();
     let hw = acquire_hw(&HSTATE_HW);
 
     // TODO: this appears to be the most concise way of read-modify-writing a
@@ -44,6 +46,9 @@ pub fn hstate_isr() {
         );
         LINE.store(line, Ordering::Relaxed);
     }
+
+    #[cfg(feature = "measurement")]
+    crate::measurement::sig_a_clear();
 }
 
 fn start_of_active_video(dma: &device::DMA2,

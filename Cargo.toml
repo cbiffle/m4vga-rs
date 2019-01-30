@@ -5,6 +5,9 @@ readme = "README.md"
 name = "m4vga"
 version = "0.1.0"
 
+[features]
+measurement = []
+
 [dependencies]
 cortex-m = "0.5.8"
 cortex-m-rt = "0.6.7"
