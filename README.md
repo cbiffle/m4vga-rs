@@ -264,10 +264,12 @@ with `-Os` and the Rust with (the equivalent of) `-O3`.
 
 ### On memory safety
 
-I'm currently using `unsafe` in 53 places. *None of them are for performance
-reasons.*
+I'm currently using `unsafe` in 35 places. *None of them are for Rust-specific
+performance reasons.* (I say "Rust-specific" because some of them are calling
+into assembly routines, which definitely exist for performance reasons, but are
+identical in C++.)
 
-The majority of `unsafe` code (**29 instances**) is related to a class of API
+The majority of `unsafe` code (**13 instances**) is related to a class of API
 deficits in the `stm32f4` device interface crate I'm using. It treats any field
 in a register for which it doesn't have defined valid bit patterns as
 potentially unsafe...  and then fails to define most of the register fields I'm
@@ -278,26 +280,28 @@ After that, the leading causes are situations that are *inherently* unsafe.
 These are the reason that `unsafe` exists. In these cases the right solution is
 to wrap the code in a neat, safe API (and I have):
 
-- Calling into assembly code: 5
-- Getting exclusive references to shared mutable global data: 5
-- `UnsafeCell` access within custom mutex-like types: 4
-- `unsafe impl Sync` on custom mutex-like types: 3
-- Setting up the CPU (e.g. memory mapping, floating point, fault reporting,
-  interrupt priorities): 2
-- Doing something scary with `core::mem::transmute` to implement an inter-thread
-  reference sharing primitive: 2
-- Setting up the DMA controller: 1
+- 5 cases: Getting exclusive references to shared mutable global data, which is
+  super racy unless you're careful.
+- 4 cases: Calling into assembly code, which can do literally whatever it wants
+  and so must be handled carefully.
+- 4 cases: Managing the DMA controller, which is basically a peripheral for
+  doing unsafe memory things.
+- 3 cases: Implementing custom mutex-like types.
+- 2 cases: Setting up the CPU and hardware environment.
+- 2 cases: Doing something scary with `core::mem::transmute` to implement an
+  inter-thread reference sharing primitive:
 
 This leaves two `unsafe` uses that can likely be fixed:
 
 - Taking a very lazy shortcut with `core::mem::transmute` that can probably be
-  improved: 1
+  improved.
 - Deliberately aliasing a `[u32]` as `[u8]` (something that should be in the
-  standard library): 1
+  standard library).
 
 By contrast: `m4vgalib` contains **10,692 lines of unsafe code.** That is, every
-C++ statement that I wrote. Auditing 53 lines, all of which can be found by
-`grep`, is much easier.
+C++ statement that I wrote. Reviewing all possible sources of pointer-related
+bugs by reading *35 lines* -- all of which can be found by `grep` -- is much
+easier than reviewing over 10k lines of C++.
 
 #### Bounds checking
 
