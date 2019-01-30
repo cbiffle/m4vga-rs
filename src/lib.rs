@@ -38,6 +38,13 @@ pub const MAX_PIXELS_PER_LINE: usize = 800;
 
 const SHOCK_ABSORBER_SHIFT_CYCLES: u32 = 20;
 
+struct HPShared {
+    hw: HStateHw,
+    xfer: NextTransfer,
+}
+
+static HPSHARE: SpinLock<Option<HPShared>> = SpinLock::new(None);
+
 struct HStateHw {
     dma2: device::DMA2,     // PendSV HState
     tim1: device::TIM1,     // PendSV HState
@@ -45,7 +52,6 @@ struct HStateHw {
     gpiob: device::GPIOB,   //        HState
 }
 
-static HSTATE_HW: SpinLock<Option<HStateHw>> = SpinLock::new(None);
 
 /// Records when a driver instance has been initialized. This is only allowed to
 /// happen once at the moment because we don't have perfect teardown code.
@@ -58,6 +64,7 @@ const WORKING_BUFFER_SIZE: usize = rast::TARGET_BUFFER_SIZE / 4;
 
 /// Groups parameters passed from PendSV to HState ISR, describing the next DMA
 /// transfer.
+#[derive(Default)]
 struct NextTransfer {
     /// Bitwise representation of the DMA SxCR register value that starts the
     /// transfer.
@@ -69,12 +76,6 @@ struct NextTransfer {
     /// Whether to use timer-mediated DMA to decrease horizontal resolution.
     use_timer: bool,
 }
-
-/// Parameters passed from PendSV to HState ISR.
-static NEXT_XFER: SpinLock<NextTransfer> = SpinLock::new(NextTransfer {
-    dma_cr_bits: 0,
-    use_timer: false,
-});
 
 /// Driver state.
 ///
@@ -294,7 +295,10 @@ impl Vga<Idle> {
         // Reconstruct self in the new typestate, donating our hardware to the
         // ISRs.
         let hw = self.mode_state.hstate;
-        *HSTATE_HW.try_lock().unwrap() = Some(hw);
+        *HPSHARE.try_lock().unwrap() = Some(HPShared {
+            hw,
+            xfer: NextTransfer::default(),
+        });
         let tim3 = self.mode_state.tim3;
         let mut new_self = Vga {
             rcc: self.rcc,

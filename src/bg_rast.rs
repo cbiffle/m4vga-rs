@@ -6,8 +6,8 @@ use stm32f4::stm32f407 as device;
 use core::sync::atomic::Ordering;
 
 use crate::util::spin_lock::SpinLock;
-use crate::{WorkingBuffer, WORKING_BUFFER_SIZE, vert_state, acquire_hw, HSTATE_HW, NEXT_XFER, NextTransfer, TIMING, LINE, RASTER};
-use crate::timing::Timing;
+use crate::{WorkingBuffer, WORKING_BUFFER_SIZE, vert_state, acquire_hw, HPSHARE, NextTransfer, TIMING, LINE, RASTER};
+use crate::timing::{Timing, MIN_CYCLES_PER_PIXEL};
 use crate::rast::{RasterCtx, TargetBuffer};
 
 /// State used by the raster maintenance (PendSV) ISR.
@@ -82,30 +82,32 @@ pub fn maintain_raster_isr() {
     // scanout machine so that we can replace them as well.
     //
     // This writes to the scanout buffer *and* accesses AHB/APB peripherals, so
+    // it *cannot* run concurrently with scanot -- so we do it first, during
     // hblank.
     if vs.is_displayed_state() {
-        #[cfg(feature = "measurement")]
-        crate::measurement::sig_b_set();
-        let (dma_cr, use_timer) = {
-            // We need to borrow hardware from the horizontal state machine.
-            // Keep this scope as small as possible to avoid conflict.
-            let hw = acquire_hw(&HSTATE_HW);
-            prepare_for_scanout(
-                &hw.dma2,
-                &hw.tim1,
-                &state.raster_ctx,
-            )
-        };
-        // [OX] TODO: omg there is no actual way to get the bits out of this
-        let dma_cr_bits = unsafe { core::mem::transmute(dma_cr) };
+        {
+            #[cfg(feature = "measurement")]
+            crate::measurement::sig_b_set();
+            let mut share = acquire_hw(&HPSHARE);
+            let hw = &share.hw;
+            let (dma_cr, use_timer) = {
+                prepare_for_scanout(
+                    &hw.dma2,
+                    &hw.tim1,
+                    &state.raster_ctx,
+                )
+            };
+            // [OX] TODO: omg there is no actual way to get the bits out of this
+            let dma_cr_bits = unsafe { core::mem::transmute(dma_cr) };
 
-        // Note: we are now racing hstate SAV for control of this lock.
-        *NEXT_XFER.try_lock().expect("pendsv xfer") = NextTransfer {
-            dma_cr_bits, 
-            use_timer,
-        };
-        #[cfg(feature = "measurement")]
-        crate::measurement::sig_b_clear();
+            // Note: we are now racing hstate SAV for control of this lock.
+            share.xfer = NextTransfer {
+                dma_cr_bits, 
+                use_timer,
+            };
+            #[cfg(feature = "measurement")]
+            crate::measurement::sig_b_clear();
+        }
         if state.update_scan_buffer {
             update_scan_buffer(
                 state.raster_ctx.target_range.end,
@@ -126,8 +128,14 @@ pub fn maintain_raster_isr() {
         crate::measurement::sig_b_set();
 
         let state = &mut *state;
+
+        // Hold the TIMING lock for as short as possible.
+        let Timing { add_cycles_per_pixel, video_start_line, ..} =
+            *TIMING.try_lock().expect("pendsv timing").as_mut().unwrap();
+
         state.update_scan_buffer = rasterize_next_line(
-            &*TIMING.try_lock().expect("pendsv timing").as_mut().unwrap(),
+            add_cycles_per_pixel + MIN_CYCLES_PER_PIXEL,
+            video_start_line,
             &mut state.raster_ctx,
             &mut state.working_buffer,
         );
@@ -308,19 +316,20 @@ fn prepare_for_scanout(dma: &device::DMA2,
 }
 
 #[must_use = "the update flag is pretty important"]
-fn rasterize_next_line(timing: &Timing,
+fn rasterize_next_line(cycles_per_pixel: usize,
+                       video_start_line: usize,
                        ctx: &mut RasterCtx,
                        working: &mut WorkingBuffer)
     -> bool
 {
     let current_line = LINE.load(Ordering::Relaxed);
     let next_line = current_line + 1;
-    let visible_line = next_line - timing.video_start_line;
+    let visible_line = next_line - video_start_line;
 
     if ctx.repeat_lines == 0 {
         // Set up a default context for the rasterizer to alter if desired.
         *ctx = RasterCtx {
-            cycles_per_pixel: timing.cycles_per_pixel(),
+            cycles_per_pixel,
             repeat_lines: 0,
             target_range: 0..0,
         };

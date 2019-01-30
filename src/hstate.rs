@@ -2,7 +2,7 @@ use stm32f4::stm32f407 as device;
 
 use core::sync::atomic::Ordering;
 
-use crate::{vert_state, set_vert_state, NEXT_XFER, VState, TIMING, LINE, HSTATE_HW, acquire_hw};
+use crate::{vert_state, set_vert_state, VState, TIMING, LINE, HPSHARE, acquire_hw};
 use crate::timing::Timing;
 
 /// Entry point for the horizontal timing state machine ISR.
@@ -11,7 +11,8 @@ use crate::timing::Timing;
 pub fn hstate_isr() {
     #[cfg(feature = "measurement")]
     crate::measurement::sig_a_set();
-    let hw = acquire_hw(&HSTATE_HW);
+    let shared = acquire_hw(&HPSHARE);
+    let hw = &shared.hw;
 
     // TODO: this appears to be the most concise way of read-modify-writing a
     // register and saving the prior value in the current svd2rust API. Report a
@@ -25,7 +26,7 @@ pub fn hstate_isr() {
         if vert_state().is_displayed_state() {
             // Note: we are racing PendSV end-of-rasterization for control of
             // this lock.
-            let params = NEXT_XFER.try_lock().expect("hstate xfer");
+            let params = &shared.xfer;
             let dma_xfer = unsafe { core::mem::transmute(params.dma_cr_bits) };
             start_of_active_video(
                 &hw.dma2,

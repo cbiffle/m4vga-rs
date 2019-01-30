@@ -1,7 +1,7 @@
 use crate::stm32;
 use stm32f4::stm32f407 as device;
 
-const MIN_CYCLES_PER_PIXEL: usize = 4;
+pub const MIN_CYCLES_PER_PIXEL: usize = 4;
 
 // TODO: I want this to be Debug, but svd2rust hates me.
 /// Defines the timing parameters for a video mode.
