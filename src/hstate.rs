@@ -6,6 +6,7 @@ use core::sync::atomic::Ordering;
 
 use crate::{vert_state, set_vert_state, VState, TIMING, LINE, HPSHARE, acquire_hw};
 use crate::timing::Timing;
+use crate::util::stm32::CopyHack;
 
 /// Entry point for the horizontal timing state machine ISR.
 ///
@@ -34,11 +35,10 @@ pub fn hstate_isr() {
         // Only bother doing work if we're not in vblank.
         if vert_state().is_displayed_state() {
             let params = &shared.xfer;
-            let dma_xfer = unsafe { core::mem::transmute(params.dma_cr_bits) };
             start_of_active_video(
                 &hw.dma2,
                 &hw.tim1,
-                dma_xfer,
+                params.dma_cr.copy_hack(),
                 params.use_timer,
             );
         }

@@ -151,3 +151,11 @@ unsafe impl CopyHack for device::rcc::cfgr::PPRE2W {}
 unsafe impl CopyHack for device::flash::acr::LATENCYW {}
 unsafe impl CopyHack for device::rcc::pllcfgr::PLLPW {}
 unsafe impl CopyHack for device::Interrupt {}
+unsafe impl CopyHack for device::dma2::s0cr::W {}
+unsafe impl CopyHack for device::dma2::s1cr::W {}
+unsafe impl CopyHack for device::dma2::s2cr::W {}
+unsafe impl CopyHack for device::dma2::s3cr::W {}
+unsafe impl CopyHack for device::dma2::s4cr::W {}
+unsafe impl CopyHack for device::dma2::s5cr::W {}
+unsafe impl CopyHack for device::dma2::s6cr::W {}
+unsafe impl CopyHack for device::dma2::s7cr::W {}

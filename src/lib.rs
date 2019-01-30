@@ -214,7 +214,10 @@ impl Vga<Idle> {
         let hw = self.mode_state.hstate;
         *HPSHARE.try_lock().unwrap() = Some(HPShared {
             hw,
-            xfer: NextTransfer::default(),
+            xfer: NextTransfer {
+                dma_cr: device::dma2::s5cr::W::reset_value(),
+                use_timer: false,
+            },
         });
         let tim3 = self.mode_state.tim3;
         let mut new_self = Vga {
@@ -445,15 +448,9 @@ struct HStateHw {
 
 /// Groups parameters produced by PendSV for HState to consume, describing the
 /// next DMA transfer.
-#[derive(Default)]
 struct NextTransfer {
-    /// Bitwise representation of the DMA SxCR register value that starts the
-    /// transfer.
-    ///
-    /// TODO: this should probably be `device::dma2::s5cr::W`, but that type has
-    /// no `const` constructor for use in a static, and is generally just a pain
-    /// in the ass to work with, so `u32` it is.
-    dma_cr_bits: u32,
+    /// Contents of the DMA SxCR register value that starts the transfer.
+    dma_cr: device::dma2::s5cr::W,
     /// Whether to use timer-mediated DMA to decrease horizontal resolution.
     use_timer: bool,
 }

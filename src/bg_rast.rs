@@ -111,13 +111,9 @@ pub fn maintain_raster_isr() {
                 &state.raster_ctx,
             );
 
-            // Safety: stm32f4 won't let us get the bits out of a W type, which
-            // is clearly a mistake.
-            let dma_cr_bits = unsafe { core::mem::transmute(dma_cr) };
-
             // Record transfer parameters where SAV can find them.
             share.xfer = NextTransfer {
-                dma_cr_bits, 
+                dma_cr,
                 use_timer,
             };
 
