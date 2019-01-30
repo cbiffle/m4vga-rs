@@ -153,6 +153,8 @@ pub fn maintain_raster_isr() {
         let state = &mut *state;
 
         // Hold the TIMING lock for just long enough to copy some fields out.
+        // At this point in the process we are racing SAV only. HState only uses
+        // TIMING on EAV, so we should be safe.
         let Timing { add_cycles_per_pixel, video_start_line, ..} =
             *TIMING.try_lock().expect("pendsv timing").as_mut().unwrap();
 

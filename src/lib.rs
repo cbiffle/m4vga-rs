@@ -463,8 +463,7 @@ struct NextTransfer {
 }
 
 /// Shared copy of the current timing settings. This is shared between HState
-/// and PendSV -- perhaps it should be part of the other spinlock shared thusly?
-/// TODO.
+/// and PendSV -- but it's locked at different times, and so stands separate.
 static TIMING: SpinLock<Option<timing::Timing>> = SpinLock::new(None);
 
 /// Storage for the raster callback reference. Loaded from thread mode, accessed
