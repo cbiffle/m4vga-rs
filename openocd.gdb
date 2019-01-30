@@ -8,9 +8,6 @@ break DefaultHandler
 break UserHardFault
 break rust_begin_unwind
 
-# *try* to stop at the user entry point (it might be gone due to inlining)
-break main
-
 monitor arm semihosting enable
 
 # send captured ITM to the file itm.fifo
@@ -28,6 +25,3 @@ monitor tpiu config internal itm.txt uart off 160000000
 monitor itm port 0 on
 
 load
-
-# start the process but immediately halt the processor
-stepi
