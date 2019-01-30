@@ -32,6 +32,7 @@ use crate::util::spin_lock::{SpinLock, SpinLockGuard};
 use crate::rast::{RasterCtx, TargetBuffer};
 use crate::timing::Polarity;
 
+/// Representation of a pixel in memory.
 pub type Pixel = u8;
 
 pub const MAX_PIXELS_PER_LINE: usize = 800;
@@ -102,6 +103,7 @@ pub struct Sync(());
 /// Driver mode once rasterization has been configured.
 pub struct Live(());
 
+/// Trait for driver states where sync signals are being generated.
 pub trait SyncOn {}
 
 impl SyncOn for Sync {}
@@ -408,6 +410,10 @@ pub fn take_hardware() -> Vga<Idle> {
         p.DMA2)
 }
 
+/// Initializes the driver using the given hardware capabilities.
+///
+/// The driver is returned in `Idle` state, meaning output has not yet started.
+/// You will likely want to call `configure_timing` followed by `with_raster`.
 pub fn init(mut nvic: cm::NVIC,
             scb: &mut cm::SCB,
             flash: device::FLASH,

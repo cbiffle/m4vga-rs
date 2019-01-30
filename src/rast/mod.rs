@@ -1,3 +1,5 @@
+//! Rasterizer support.
+
 pub mod bitmap_1;
 
 use core::sync::atomic::{Ordering, AtomicUsize, AtomicBool};
@@ -5,9 +7,14 @@ use core::cell::Cell;
 use scopeguard::defer;
 use super::Pixel;
 
+/// Number of pixels in the target buffers given to raster callbacks.
 pub const TARGET_BUFFER_SIZE: usize = super::MAX_PIXELS_PER_LINE + 32;
+
+/// The type given to raster callbacks by reference, to fill with pixels.
 pub type TargetBuffer = [Pixel; TARGET_BUFFER_SIZE];
 
+/// Context passed to raster callbacks. Filled out with default values by the
+/// driver; callbacks can alter its contents.
 pub struct RasterCtx {
     /// Number of AHB cycles per pixel of output. Provided by the driver based
     /// on the current mode; raster callbacks can adjust to derive new modes.
@@ -31,15 +38,14 @@ pub struct RasterCtx {
     pub target_range: core::ops::Range<usize>,
 }
 
-pub fn solid_color_fill(_line_number: usize,
-                        target: &mut TargetBuffer,
+/// Utility routine for cheaply filling a line with a solid color.
+pub fn solid_color_fill(target: &mut TargetBuffer,
                         ctx: &mut RasterCtx,
                         width: usize,
                         fill: Pixel) {
     target[0] = fill;               // Same color.
     ctx.target_range = 0..1;            // One pixel.
     ctx.cycles_per_pixel *= width;      // Stretched across the whole line.
-    ctx.repeat_lines = 1000;            // And don't ask again.
 }
 
 // ---
@@ -66,7 +72,7 @@ const LOCKED: usize = 3;
 /// `observe` cannot, and is safer for use by interrupts. See each method's
 /// documentation for specifics.
 #[derive(Debug)]
-pub struct IRef {
+pub(crate) struct IRef {
     state: AtomicUsize,
     poisoned: AtomicBool,
     contents: Cell<(usize, usize)>,
