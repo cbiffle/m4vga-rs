@@ -119,7 +119,11 @@ impl IRef {
         );
         assert_eq!(r, Ok(EMPTY), "concurrent/reentrant donation to IRef");
 
+        // Construct a FnMut fat pointer to our closure, and then erase its
+        // type.
         let val: &mut (dyn FnMut(_, _, _) + Send + 'env) = val;
+        // Safety: we only reinterpret these bits as the same type used above
+        // but with *narrower* lifetime.
         let val: (usize, usize) = unsafe { core::mem::transmute(val) };
 
         // By placing the cell in LOADING state we now have exclusive control.
@@ -195,6 +199,10 @@ impl IRef {
                     // is why the `body` closure is (implicitly) `for<'a>`.
                     let r: &mut (dyn FnMut(_, &mut _, &mut _)
                                  + Send) =
+                        // Safety: we put it in there, we have used locking to
+                        // ensure that our reference will be unique, and the
+                        // `donate` code will ensure this hasn't gone out of
+                        // scope.
                         unsafe { core::mem::transmute(r) };
                     body(r)
                 };

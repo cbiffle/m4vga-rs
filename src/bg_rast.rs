@@ -249,8 +249,8 @@ fn prepare_for_scanout(dma: &device::DMA2,
         // Adjust reload frequency of TIM1 to accomodate desired pixel clock.
         // (ARR value is period - 1.)
         let reload = (ctx.cycles_per_pixel - 1) as u32;
+        // Safety: only unsafe due to upstream bug. TODO
         vtimer.arr.write(|w| unsafe {
-            // TODO: ARR unsafe? BUG
             w.bits(reload)
         });
         // Force an update to reset the timer state.
@@ -258,6 +258,7 @@ fn prepare_for_scanout(dma: &device::DMA2,
         // Configure the timer as *almost* ready to produce a DRQ, less a small
         // value (fudge factor).  Gotta do this after the update event, above,
         // because that clears CNT.
+        // Safety: only unsafe due to upstream bug. TODO
         vtimer.cnt.write(|w| unsafe {
             w.bits(reload - DRQ_SHIFT_CYCLES)
         });

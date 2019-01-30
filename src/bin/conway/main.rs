@@ -28,8 +28,13 @@ static mut BUF1: [u32; 800 * 600 / 32] = [0; 800*600/32];
 #[allow(unused_parens)] // TODO bug in cortex_m_rt
 #[cortex_m_rt::entry]
 fn main() -> ! {
+    // Safety: we're claiming the single exclusive reference to our static
+    // buffer. Safe so long as we don't do it again.
     let fg = ReadWriteLock::new(unsafe { &mut BUF0 });
+    // Safety: we're claiming the single exclusive reference to our static
+    // buffer. Safe so long as we don't do it again.
     let mut bg = unsafe { &mut BUF1 };
+
     let clut = AtomicUsize::new(0xFF00);
 
     // Give the driver its hardware resources...

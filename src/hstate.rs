@@ -24,6 +24,7 @@ pub fn hstate_isr() {
     // register and saving the prior value in the current svd2rust API. Report a
     // bug.
     let sr = hw.tim4.sr.read();
+    // Safety: only unsafe due to upstream bug. TODO
     hw.tim4.sr.write(|w| unsafe { w.bits(sr.bits()) }
                      .cc2if().clear_bit()
                      .cc3if().clear_bit());
@@ -116,7 +117,7 @@ fn end_of_active_video(drq_timer: &device::TIM1,
     // TODO: actually, if I'm not implementing the 'offset' field I used for
     // display distortion effects, I don't need to do this every scanline.
     if false {
-        // TODO: TIM4 CCR2 writes are unsafe, which is a bug
+        // Safety: only unsafe due to upstream bug. TODO
         h_timer.ccr2.write(|w| unsafe {
             w.bits(
                 (current_timing.sync_pixels
@@ -140,6 +141,7 @@ fn end_of_active_video(drq_timer: &device::TIM1,
         // TODO: really unfortunate toggle code. File bug.
         let odr = gpiob.odr.read().bits();
         let mask = 1 << 7;
+        // Safety: only unsafe due to upstream bug. TODO
         gpiob.bsrr.write(|w| unsafe {
             w.bits(
                 (!odr & mask) | ((odr & mask) << 16)

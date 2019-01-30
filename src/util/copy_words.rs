@@ -23,6 +23,7 @@ pub fn copy_words(source: &[u32], dest: &mut [u32]) {
     // dissolves.
     assert!(source.len() == dest.len());
 
+    // Safety: if they're the same len, we'll remain in-bounds.
     unsafe {
         copy_words_impl(source.as_ptr(), dest.as_mut_ptr(), dest.len())
     }

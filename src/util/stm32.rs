@@ -80,9 +80,12 @@ pub fn configure_clocks(rcc: &device::RCC,
     // Configure the PLL.
 
     rcc.pllcfgr.modify(|_, w| {
-        unsafe { w.pllm().bits(cfg.crystal_divisor); } // TODO
-        unsafe { w.plln().bits(cfg.vco_multiplier); } // TODO
-        unsafe { w.pllq().bits(cfg.pll48_divisor); } // TODO
+        // Safety: only unsafe due to upstream bug. TODO
+        unsafe { w.pllm().bits(cfg.crystal_divisor); }
+        // Safety: only unsafe due to upstream bug. TODO
+        unsafe { w.plln().bits(cfg.vco_multiplier); }
+        // Safety: only unsafe due to upstream bug. TODO
+        unsafe { w.pllq().bits(cfg.pll48_divisor); }
         w.pllp().variant(cfg.general_divisor.copy_hack()) // half yay/half TODO
             .pllsrc().variant(device::rcc::pllcfgr::PLLSRCW::HSE) // yay
     });

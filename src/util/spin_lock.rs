@@ -48,6 +48,8 @@ impl<T: ?Sized + Send> SpinLock<T> {
             // `try_lock` will fail.
             Ok(SpinLockGuard {
                 locked: LockBorrow(&self.locked),
+                // Safety: we've locked, so we can generate an exclusive
+                // reference.
                 contents: unsafe { &mut *self.contents.get() },
             })
         }

@@ -27,6 +27,8 @@ fn xor_pattern(line_number: usize,
     // The asm routine only writes within bounds if given an even multiple of
     // four pixels. Round down to ensure this.
     let length = target.len() & !3;
+
+    // Safety: with length rounded down, the asm routine behaves.
     unsafe {
         xor_pattern_impl(
             line_number,

@@ -34,6 +34,8 @@ pub fn unpack(src: &[u32],
               clut: &AtomicUsize,
               target: &mut [u8]) {
     assert_eq!(src.len() * 32, target.len());
+    // Safety: the assembler routine is safe as long as the assertion above
+    // holds.
     unsafe {
         unpack_1bpp_impl(
             src.as_ptr(),
@@ -54,6 +56,8 @@ pub fn unpack_overlay(src: &[u32],
               target: &mut [u8]) {
     assert_eq!(src.len() * 32, target.len());
     assert_eq!(target.len(), background.len());
+    // Safety: the assembler routine is safe as long as the assertions above
+    // hold.
     unsafe {
         unpack_1bpp_overlay_impl(
             src.as_ptr(),

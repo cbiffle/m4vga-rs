@@ -177,9 +177,9 @@ impl Vga<Idle> {
 
         // Configure tim4 to trigger from tim3 and run forever.
         tim4.smcr.write(|w| unsafe {
-            // BUG: TS and SMS contents not modeled, have to use raw bits
-            w.ts().bits(0b10)
-                .sms().bits(0b110)
+            // Safety: only unsafe due to upstream bug: SMCR register is
+            // incompletely modeled. TODO
+            w.ts().bits(0b10).sms().bits(0b110)
         });
 
         // Turn on tim4's interrupts.
@@ -264,6 +264,9 @@ impl Vga<Sync> {
                    core::mem::size_of::<Live>());
 
         RASTER.donate(&mut rast, || {
+            // Safety: I'm being super lazy here and punning a `Vga<Sync>`
+            // reference for a `Vga<Live>` reference. This ought to hold because
+            // they're both ZST.
             scope(unsafe { core::mem::transmute(self) })
         })
     }
@@ -333,6 +336,10 @@ pub fn init(mut nvic: cm::NVIC,
     let previous_instance = DRIVER_INIT_FLAG.swap(true, Ordering::SeqCst);
     assert_eq!(previous_instance, false);
 
+    // Ensure that our interrupts are disabled.
+    disable_irq(&mut nvic, device::Interrupt::TIM3);
+    disable_irq(&mut nvic, device::Interrupt::TIM4);
+
     // Turn on I/O compensation cell to reduce noise on power supply.
     rcc.apb2enr.modify(|_, w| w.syscfgen().enabled());
     // TODO: CMPCR seems to be modeled as read-only (?)
@@ -362,8 +369,9 @@ pub fn init(mut nvic: cm::NVIC,
     tim1.cr1.write(|w| w.urs().counter_only());
     tim1.dier.write(|w| w.ude().set_bit());
 
-    // Configure interrupt priorities. This is safe because we haven't enabled
-    // interrupts yet.
+    // Configure interrupt priorities.
+    // Safety: messing with interrupt priorities is inherently unsafe, but we
+    // disabled our device interrupts above and haven't pended a PendSV.
     unsafe {
         nvic.set_priority(device::Interrupt::TIM4, 0x00);
         nvic.set_priority(device::Interrupt::TIM3, 0x10);
@@ -604,25 +612,30 @@ fn configure_h_timer(timing: &timing::Timing,
         timing.cycles_per_pixel()
     };
 
-    // TODO PSC fields are defined as unsafe - BUG
+    // Safety: only unsafe due to upstream BUG. TODO
     tim.psc.write(|w| unsafe { w.bits(apb_cycles_per_pixel as u32 - 1) });
 
-    // TODO ARR fields are defined as unsafe - BUG
+    // Safety: only unsafe due to upstream BUG. TODO
     tim.arr.write(|w| unsafe { w.bits(timing.line_pixels as u32 - 1) });
 
+    // Safety: only unsafe due to upstream BUG. TODO
     tim.ccr1.write(|w| unsafe { w.bits(timing.sync_pixels as u32) });
+    // Safety: only unsafe due to upstream BUG. TODO
     tim.ccr2.write(|w| unsafe { w.bits(
                 (timing.sync_pixels
                  + timing.back_porch_pixels - timing.video_lead) as u32
                 )});
+    // Safety: only unsafe due to upstream BUG. TODO
     tim.ccr3.write(|w| unsafe { w.bits(
                 (timing.sync_pixels
                  + timing.back_porch_pixels + timing.video_pixels) as u32
                 )});
 
     tim.ccmr1_output.write(|w| {
-        unsafe { w.oc1m().bits(0b110); }  // PWM1 TODO
-        unsafe { w.cc1s().bits(0b00); } // output TODO
+        // Safety: only unsafe due to upstream BUG. TODO
+        unsafe { w.oc1m().bits(0b110); }  // PWM1
+        // Safety: only unsafe due to upstream BUG. TODO
+        unsafe { w.cc1s().bits(0b00); } // output
         w
     });
 

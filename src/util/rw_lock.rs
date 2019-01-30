@@ -82,6 +82,8 @@ impl<T: ?Sized> ReadWriteLock<T> {
             Ordering::Relaxed
         ).map(|_| Guard {
             borrow: Borrow(&self.status),
+            // Safety: we're locked, so it's safe to generate a *shared*
+            // reference.
             value: unsafe { &*self.value.get() },
         }).map_err(|_| TryLockError::Race)
     }
@@ -121,6 +123,8 @@ impl<T: ?Sized> ReadWriteLock<T> {
             Ordering::Relaxed
         ).map(|_| GuardMut {
             borrow: BorrowMut(&self.status),
+            // Safety: we're exclusively locked, so it's safe to generate an
+            // exclusive reference.
             value: unsafe { &mut *self.value.get() },
         }).map_err(|_| TryLockMutError::Unavailable)
     }
