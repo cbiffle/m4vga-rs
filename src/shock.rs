@@ -20,6 +20,8 @@ use crate::util::spin_lock::SpinLock;
 
 pub static SHOCK_TIMER: SpinLock<Option<device::TIM3>> = SpinLock::new(None);
 
+pub const SHOCK_ABSORBER_SHIFT_CYCLES: u32 = 20;
+
 /// Entry point for the shock absorber ISR.
 ///
 /// Note: this is `etl_stm32f4xx_tim3_handler` in the C++.

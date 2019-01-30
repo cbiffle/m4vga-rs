@@ -1,23 +1,23 @@
 #![no_std]
 
-mod armv7m;
-mod stm32;
-mod startup;
-
+pub mod timing;
+pub mod rast;
 pub mod util;
-mod copy_words;
-#[allow(unused)] // TODO
-mod font_10x16;
 
 #[cfg(feature = "measurement")]
 pub mod measurement;
 
-pub mod rast;
+mod armv7m;
+mod stm32;
+mod startup;
+
+mod copy_words;
+#[allow(unused)] // TODO
+mod font_10x16;
 
 mod hstate;
 mod bg_rast;
 mod shock;
-pub mod timing;
 
 use stm32f4::stm32f407 as device;
 use cortex_m::peripheral as cm;
@@ -26,7 +26,7 @@ use cortex_m::peripheral::scb::SystemHandler;
 
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use crate::armv7m::*;
+use crate::armv7m::{enable_irq, disable_irq, clear_pending_irq};
 use crate::stm32::{copy_interrupt, UsefulDivisor, configure_clocks};
 use crate::util::spin_lock::{SpinLock, SpinLockGuard};
 use crate::rast::{RasterCtx, TargetBuffer};
@@ -35,48 +35,16 @@ use crate::timing::Polarity;
 /// Representation of a pixel in memory.
 pub type Pixel = u8;
 
+/// Timing limitations mean we can't really pull off modes above 800x600, so
+/// we'll use this fact to size some data structures.
 pub const MAX_PIXELS_PER_LINE: usize = 800;
 
-const SHOCK_ABSORBER_SHIFT_CYCLES: u32 = 20;
-
-struct HPShared {
-    hw: HStateHw,
-    xfer: NextTransfer,
-}
-
-static HPSHARE: SpinLock<Option<HPShared>> = SpinLock::new(None);
-
-struct HStateHw {
-    dma2: device::DMA2,     // PendSV HState
-    tim1: device::TIM1,     // PendSV HState
-    tim4: device::TIM4,     //        HState
-    gpiob: device::GPIOB,   //        HState
-}
-
-
-/// Records when a driver instance has been initialized. This is only allowed to
-/// happen once at the moment because we don't have perfect teardown code.
-static DRIVER_INIT_FLAG: AtomicBool = AtomicBool::new(false);
-
-/// Equivalent of `rast::TargetBuffer`, but as words to ensure alignment for
-/// certain of our high-throughput routines.
-type WorkingBuffer = [u32; WORKING_BUFFER_SIZE];
-const WORKING_BUFFER_SIZE: usize = rast::TARGET_BUFFER_SIZE / 4;
-
-/// Groups parameters passed from PendSV to HState ISR, describing the next DMA
-/// transfer.
-#[derive(Default)]
-struct NextTransfer {
-    /// Bitwise representation of the DMA SxCR register value that starts the
-    /// transfer.
-    ///
-    /// TODO: this should probably be `device::dma2::s5cr::W`, but that type has
-    /// no `const` constructor for use in a static, and is generally just a pain
-    /// in the ass to work with, so `u32` it is.
-    dma_cr_bits: u32,
-    /// Whether to use timer-mediated DMA to decrease horizontal resolution.
-    use_timer: bool,
-}
+/// Raster ISR; needs to be called from `PendSV`.
+pub use crate::bg_rast::maintain_raster_isr as pendsv_raster_isr;
+/// Shock absorber ISR; needs to be called from `TIM3`.
+pub use crate::shock::shock_absorber_isr as tim3_shock_isr;
+/// Horizontal state machine ISR; needs to be called from `TIM4`.
+pub use crate::hstate::hstate_isr as tim4_horiz_isr;
 
 /// Driver state.
 ///
@@ -108,8 +76,6 @@ pub trait SyncOn {}
 
 impl SyncOn for Sync {}
 impl SyncOn for Live {}
-
-static RASTER: rast::IRef = rast::IRef::new();
 
 /// Operations valid in any driver state.
 impl<T> Vga<T> {
@@ -147,31 +113,6 @@ impl<T: SyncOn> Vga<T> {
             cortex_m::asm::wfi()
         }
     }
-}
-
-fn sync_off(gpiob: &device::GPIOB) {
-    gpiob.moder.modify(|_, w| w
-                       .moder6().input()
-                       .moder7().input());
-    gpiob.pupdr.modify(|_, w| w
-                       .pupdr6().pull_down()
-                       .pupdr7().pull_down());
-}
-
-fn sync_on(gpiob: &device::GPIOB) {
-    // Configure PB6/PB7 for fairly sharp edges.
-    gpiob.ospeedr.modify(|_, w| w
-                         .ospeedr6().high_speed()
-                         .ospeedr7().high_speed());
-    // Disable pullups/pulldowns.
-    gpiob.pupdr.modify(|_, w| w
-                       .pupdr6().floating()
-                       .pupdr7().floating());
-    // Configure PB6 as AF2 and PB7 as output.
-    gpiob.afrl.modify(|_, w| w.afrl6().af2());
-    gpiob.moder.modify(|_, w| w
-                       .moder6().alternate()
-                       .moder7().output());
 }
 
 /// Operations that are only valid before timing has been configured.
@@ -228,7 +169,7 @@ impl Vga<Idle> {
 
         // Adjust tim3's CC2 value back in time.
         self.mode_state.tim3.ccr2.modify(|r, w| w.ccr2().bits(
-                r.ccr2().bits() - SHOCK_ABSORBER_SHIFT_CYCLES));
+                r.ccr2().bits() - shock::SHOCK_ABSORBER_SHIFT_CYCLES));
 
         // Configure tim3 to distribute its enable signal as its trigger output.
         self.mode_state.tim3.cr2.write(|w| w
@@ -261,29 +202,6 @@ impl Vga<Idle> {
             Polarity::Positive => gpiob.bsrr.write(|w| w.br7().set_bit()),
             Polarity::Negative => gpiob.bsrr.write(|w| w.bs7().set_bit()),
         }
-
-        /*
-        TODO: since I've assigned ownership of the working buffer to the PendSV
-        ISR, we can't do this here. I think this is okay, since it would only
-        catch bugs in the very first rasterized scanline anyway.
-
-        // Scribble over working buffer to help catch bugs.
-        for pair in self.working_buffer().chunks_exact_mut(2) {
-            pair[0] = 0xFF;
-            pair[1] = 0x00;
-        }
-        */
-
-        /*
-        TODO: soooo I used to do this, but I'm pretty sure the rasterizer code
-        will handle it, so.
-
-        // Blank the final word of the scan buffer.
-        for b in &mut self.scan_buffer()
-                [timing.video_pixels .. timing.video_pixels + 4] {
-            *b = 0
-        }
-        */
 
         // Set up global state.
         LINE.store(0, Ordering::Relaxed);
@@ -390,26 +308,6 @@ impl Vga<Live> {
     }
 }
 
-/// Simplified version of `init` that assumes ownership of all hardware. This
-/// covers the common case of pure graphics demos.
-pub fn take_hardware() -> Vga<Idle> {
-    let mut cp = cortex_m::peripheral::Peripherals::take().unwrap();
-    let p = device::Peripherals::take().unwrap();
-
-    init(
-        cp.NVIC,
-        &mut cp.SCB,
-        p.FLASH,
-        &p.DBG,
-        p.RCC,
-        p.GPIOB,
-        p.GPIOE,
-        p.TIM1,
-        p.TIM3,
-        p.TIM4,
-        p.DMA2)
-}
-
 /// Initializes the driver using the given hardware capabilities.
 ///
 /// The driver is returned in `Idle` state, meaning output has not yet started.
@@ -506,6 +404,106 @@ pub fn init(mut nvic: cm::NVIC,
     vga
 }
 
+/// Simplified version of `init` that assumes ownership of all hardware. This
+/// covers the common case of pure graphics demos.
+pub fn take_hardware() -> Vga<Idle> {
+    let mut cp = cortex_m::peripheral::Peripherals::take().unwrap();
+    let p = device::Peripherals::take().unwrap();
+
+    init(
+        cp.NVIC,
+        &mut cp.SCB,
+        p.FLASH,
+        &p.DBG,
+        p.RCC,
+        p.GPIOB,
+        p.GPIOE,
+        p.TIM1,
+        p.TIM3,
+        p.TIM4,
+        p.DMA2)
+}
+
+/// Records when a driver instance has been initialized. This is only allowed to
+/// happen once at the moment because we don't have perfect teardown code.
+static DRIVER_INIT_FLAG: AtomicBool = AtomicBool::new(false);
+
+/// Data shared by the Hstate and PendSV ISRs.
+struct HPShared {
+    hw: HStateHw,
+    xfer: NextTransfer,
+}
+
+/// SpinLock avoiding races between HState and PendSV.
+static HPSHARE: SpinLock<Option<HPShared>> = SpinLock::new(None);
+
+/// Hardware required by the horizontal state machine (and bits of it are shared
+/// by PendSV, largely as an optimization).
+struct HStateHw {
+    dma2: device::DMA2,     // PendSV HState
+    tim1: device::TIM1,     // PendSV HState
+    tim4: device::TIM4,     //        HState
+    gpiob: device::GPIOB,   //        HState
+}
+
+/// Groups parameters produced by PendSV for HState to consume, describing the
+/// next DMA transfer.
+#[derive(Default)]
+struct NextTransfer {
+    /// Bitwise representation of the DMA SxCR register value that starts the
+    /// transfer.
+    ///
+    /// TODO: this should probably be `device::dma2::s5cr::W`, but that type has
+    /// no `const` constructor for use in a static, and is generally just a pain
+    /// in the ass to work with, so `u32` it is.
+    dma_cr_bits: u32,
+    /// Whether to use timer-mediated DMA to decrease horizontal resolution.
+    use_timer: bool,
+}
+
+/// Shared copy of the current timing settings. This is shared between HState
+/// and PendSV -- perhaps it should be part of the other spinlock shared thusly?
+/// TODO.
+static TIMING: SpinLock<Option<timing::Timing>> = SpinLock::new(None);
+
+/// Storage for the raster callback reference. Loaded from thread mode, accessed
+/// by hstate.
+static RASTER: rast::IRef = rast::IRef::new();
+
+/// Equivalent of `rast::TargetBuffer`, but as words to ensure alignment for
+/// certain of our high-throughput routines.
+type WorkingBuffer = [u32; WORKING_BUFFER_SIZE];
+
+/// Number of words in a `WorkingBuffer`.
+const WORKING_BUFFER_SIZE: usize = rast::TARGET_BUFFER_SIZE / 4;
+
+/// Turns off sync outputs. This used to be public API, but I never use it, so.
+fn sync_off(gpiob: &device::GPIOB) {
+    gpiob.moder.modify(|_, w| w
+                       .moder6().input()
+                       .moder7().input());
+    gpiob.pupdr.modify(|_, w| w
+                       .pupdr6().pull_down()
+                       .pupdr7().pull_down());
+}
+
+/// Turns on sync outputs.
+fn sync_on(gpiob: &device::GPIOB) {
+    // Configure PB6/PB7 for fairly sharp edges.
+    gpiob.ospeedr.modify(|_, w| w
+                         .ospeedr6().high_speed()
+                         .ospeedr7().high_speed());
+    // Disable pullups/pulldowns.
+    gpiob.pupdr.modify(|_, w| w
+                       .pupdr6().floating()
+                       .pupdr7().floating());
+    // Configure PB6 as AF2 and PB7 as output.
+    gpiob.afrl.modify(|_, w| w.afrl6().af2());
+    gpiob.moder.modify(|_, w| w
+                       .moder6().alternate()
+                       .moder7().output());
+}
+
 /// Pattern for acquiring hardware resources loaned to an ISR in a static.
 ///
 /// # Panics
@@ -526,28 +524,49 @@ fn acquire_hw<T: Send>(lock: &SpinLock<Option<T>>) -> SpinLockGuard<T> {
     )
 }
 
+/// Possible states of the vertical retrace state machine.
+///
+/// This is encoded as a Gray code for efficient testing by the functions below.
+/// I haven't checked to see if that's actually efficient recently (TODO).
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum VState {
+    /// Deep in the vertical blanking interval.
     Blank = 0b00,
+    /// On the line just before active video, so the rasterizer needs to be
+    /// warming up.
     Starting = 0b01,
+    /// Active video.
     Active = 0b11,
+    /// On the final line in active video -- rasterizer must shut down but
+    /// scanout will continue.
     Finishing = 0b10,
 }
 
 impl VState {
+    /// Does scanout occur in this state?
     fn is_displayed_state(self) -> bool {
         (self as usize & 0b10) != 0
     }
 
+    /// Does rasterization need to run in this state?
     fn is_rendered_state(self) -> bool {
         (self as usize & 1) != 0
     }
 }
 
+/// Non-blocking storage for the current vertical retrace state, encoded as a
+/// `usize`. This is used by both ISRs.
 static VERT_STATE: AtomicUsize = AtomicUsize::new(VState::Blank as usize);
-static TIMING: SpinLock<Option<timing::Timing>> = SpinLock::new(None);
+
+/// Non-blocking storage for the current scan line number. Note that line
+/// numbers used here start counting at the top of the vertical blanking
+/// interval, not at the top of active video.
+///
+/// This is used by both ISRs, and also by applications to synchronize with
+/// vertical retrace.
 static LINE: AtomicUsize = AtomicUsize::new(0);
 
+/// Convenient accessor for the vertical retrace state.
 fn vert_state() -> VState {
     match VERT_STATE.load(Ordering::Relaxed) {
         0b00 => VState::Blank,
@@ -557,10 +576,13 @@ fn vert_state() -> VState {
     }
 }
 
+/// Sets the vertical retrace state.
 fn set_vert_state(s: VState) {
     VERT_STATE.store(s as usize, Ordering::Relaxed)
 }
 
+/// Utility for disabling one of our horizontal retrace timers. "Disabling" here
+/// means that we ensure its interrupts cannot fire and it's left in reset.
 fn disable_h_timer(nvic: &mut cortex_m::peripheral::NVIC,
                    i: &device::Interrupt,
                    rcc: &device::RCC,
@@ -572,6 +594,8 @@ fn disable_h_timer(nvic: &mut cortex_m::peripheral::NVIC,
     clear_pending_irq(copy_interrupt(i));
 }
 
+/// Utility for configuring one of our horizontal retrace timers. It's set up
+/// and taken out of reset, but its interrupts are not enabled.
 fn configure_h_timer(timing: &timing::Timing,
                      tim: &device::tim3::RegisterBlock,
                      rcc: &device::RCC,
@@ -620,7 +644,3 @@ fn configure_h_timer(timing: &timing::Timing,
                    .cc1e().set_bit()
                    .cc1p().bit(timing.hsync_polarity == Polarity::Negative));
 }
-
-pub use crate::bg_rast::maintain_raster_isr as pendsv_raster_isr;
-pub use crate::shock::shock_absorber_isr as tim3_shock_isr;
-pub use crate::hstate::hstate_isr as tim4_horiz_isr;
