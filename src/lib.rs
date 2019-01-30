@@ -328,7 +328,7 @@ pub fn init(mut nvic: cm::NVIC,
 {
 
     #[cfg(feature = "measurement")]
-    measurement::init();
+    unsafe { measurement::init(); }
 
     let previous_instance = DRIVER_INIT_FLAG.swap(true, Ordering::SeqCst);
     assert_eq!(previous_instance, false);

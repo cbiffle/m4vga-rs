@@ -4,9 +4,16 @@
 
 use stm32f4::stm32f407 as device;
 
-pub fn init() {
-    let rcc = unsafe { &*device::RCC::ptr() };
-    let gpioc = unsafe { &*device::GPIOC::ptr() };
+/// Sets up the measurement subsystem.
+///
+/// # Safety
+///
+/// This is safe *as long as* it's not preempted. If interrupts are enabled, and
+/// interrupts attempt to configure either RCC or GPIOC, their updates may be
+/// reverted. Call this from early in `main` and you're good.
+pub unsafe fn init() {
+    let rcc = &*device::RCC::ptr();
+    let gpioc = &*device::GPIOC::ptr();
 
     rcc.ahb1enr.modify(|_, w| w.gpiocen().set_bit());
 
@@ -30,52 +37,43 @@ pub fn init() {
                        )
 }
 
-pub fn sig_a_set() {
-    let gpioc = unsafe { &*device::GPIOC::ptr() };
+fn write_gpioc_bsrr<F>(op: F)
+where F: FnOnce(&mut device::gpioi::bsrr::W) -> &mut device::gpioi::bsrr::W
+{
+    // Safety: writes to this register are atomic and idempotent.
+    unsafe { &*device::GPIOC::ptr() }.bsrr.write(op);
+}
 
-    gpioc.bsrr.write(|w| w.bs8().set_bit());
+pub fn sig_a_set() {
+    write_gpioc_bsrr(|w| w.bs8().set_bit());
 }
 
 pub fn sig_a_clear() {
-    let gpioc = unsafe { &*device::GPIOC::ptr() };
-
-    gpioc.bsrr.write(|w| w.br8().set_bit());
+    write_gpioc_bsrr(|w| w.br8().set_bit());
 }
 
 pub fn sig_b_set() {
-    let gpioc = unsafe { &*device::GPIOC::ptr() };
-
-    gpioc.bsrr.write(|w| w.bs9().set_bit());
+    write_gpioc_bsrr(|w| w.bs9().set_bit());
 }
 
 pub fn sig_b_clear() {
-    let gpioc = unsafe { &*device::GPIOC::ptr() };
-
-    gpioc.bsrr.write(|w| w.br9().set_bit());
+    write_gpioc_bsrr(|w| w.br9().set_bit());
 }
 
 pub fn sig_c_set() {
-    let gpioc = unsafe { &*device::GPIOC::ptr() };
-
-    gpioc.bsrr.write(|w| w.bs10().set_bit());
+    write_gpioc_bsrr(|w| w.bs10().set_bit());
 }
 
 pub fn sig_c_clear() {
-    let gpioc = unsafe { &*device::GPIOC::ptr() };
-
-    gpioc.bsrr.write(|w| w.br10().set_bit());
+    write_gpioc_bsrr(|w| w.br10().set_bit());
 }
 
 pub fn sig_d_set() {
-    let gpioc = unsafe { &*device::GPIOC::ptr() };
-
-    gpioc.bsrr.write(|w| w.bs11().set_bit());
+    write_gpioc_bsrr(|w| w.bs11().set_bit());
 }
 
 pub fn sig_d_clear() {
-    let gpioc = unsafe { &*device::GPIOC::ptr() };
-
-    gpioc.bsrr.write(|w| w.br11().set_bit());
+    write_gpioc_bsrr(|w| w.br11().set_bit());
 }
 
 
