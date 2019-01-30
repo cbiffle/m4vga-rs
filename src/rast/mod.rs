@@ -139,8 +139,7 @@ impl IRef {
                     Ordering::Relaxed,
                     );
                 if let Ok(_) = r { break }
-                // TODO: this would be a polite place to WFI. Note that core's
-                // spin_loop_hint does not currently produce WFI.
+                cortex_m::asm::wfi();
             }
 
             if self.poisoned.load(Ordering::Acquire) {
