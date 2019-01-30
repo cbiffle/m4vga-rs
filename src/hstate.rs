@@ -2,8 +2,8 @@ use stm32f4::stm32f407 as device;
 
 use core::sync::atomic::Ordering;
 
-use crate::vga::{vert_state, set_vert_state, NEXT_XFER, VState, TIMING, LINE, HSTATE_HW, acquire_hw};
-use crate::vga::timing::Timing;
+use crate::{vert_state, set_vert_state, NEXT_XFER, VState, TIMING, LINE, HSTATE_HW, acquire_hw};
+use crate::timing::Timing;
 
 /// Entry point for the horizontal timing state machine ISR.
 ///

@@ -6,9 +6,9 @@ use stm32f4::stm32f407 as device;
 use core::sync::atomic::Ordering;
 
 use crate::util::spin_lock::SpinLock;
-use crate::vga::{WorkingBuffer, WORKING_BUFFER_SIZE, vert_state, acquire_hw, HSTATE_HW, NEXT_XFER, NextTransfer, TIMING, LINE, RASTER};
-use crate::vga::timing::Timing;
-use crate::vga::rast::{RasterCtx, TargetBuffer};
+use crate::{WorkingBuffer, WORKING_BUFFER_SIZE, vert_state, acquire_hw, HSTATE_HW, NEXT_XFER, NextTransfer, TIMING, LINE, RASTER};
+use crate::timing::Timing;
+use crate::rast::{RasterCtx, TargetBuffer};
 
 /// State used by the raster maintenance (PendSV) ISR.
 struct RasterState {

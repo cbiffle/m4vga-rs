@@ -15,7 +15,7 @@
 //! the CPU and bus are quiet when the interrupt fires.
 
 use stm32f4::stm32f407 as device;
-use crate::vga::{acquire_hw};
+use crate::acquire_hw;
 use crate::util::spin_lock::SpinLock;
 
 pub static SHOCK_TIMER: SpinLock<Option<device::TIM3>> = SpinLock::new(None);

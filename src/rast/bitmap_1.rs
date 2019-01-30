@@ -1,6 +1,6 @@
 use core::sync::atomic::AtomicUsize;
 
-use crate::vga::rast::Pixel;
+use crate::rast::Pixel;
 
 extern {
     #[allow(improper_ctypes)]

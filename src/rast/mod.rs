@@ -1,6 +1,4 @@
 pub mod bitmap_1;
-#[allow(unused)] // TODO
-pub mod text_10x16;
 
 use core::sync::atomic::{Ordering, AtomicUsize, AtomicBool};
 use core::cell::Cell;

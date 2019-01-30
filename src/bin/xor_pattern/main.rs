@@ -10,7 +10,6 @@ extern crate panic_itm;
 use core::sync::atomic::{Ordering, AtomicUsize};
 use stm32f4;
 use stm32f4::stm32f407::interrupt;
-use m4vga::vga;
 
 extern {
     /// The assembly-language pattern generator found in `pattern.S`.
@@ -42,8 +41,8 @@ fn xor_pattern(line_number: usize,
 #[allow(unused_parens)] // TODO bug in cortex_m_rt
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    let mut vga = vga::take_hardware()
-        .configure_timing(&m4vga::vga::timing::SVGA_800_600);
+    let mut vga = m4vga::take_hardware()
+        .configure_timing(&m4vga::timing::SVGA_800_600);
 
     // Okay, demo time. This demo keeps a single piece of state: a frame
     // counter. We'll stack-allocate it because we can.
@@ -74,17 +73,17 @@ fn main() -> ! {
 /// Wires up the PendSV handler expected by the driver.
 #[cortex_m_rt::exception]
 fn PendSV() {
-    m4vga::vga::bg_rast::maintain_raster_isr()
+    m4vga::bg_rast::maintain_raster_isr()
 }
 
 /// Wires up the TIM3 handler expected by the driver.
 #[interrupt]
 fn TIM3() {
-    m4vga::vga::shock::shock_absorber_isr()
+    m4vga::shock::shock_absorber_isr()
 }
 
 /// Wires up the TIM4 handler expected by the driver.
 #[interrupt]
 fn TIM4() {
-    m4vga::vga::hstate::hstate_isr()
+    m4vga::hstate::hstate_isr()
 }
