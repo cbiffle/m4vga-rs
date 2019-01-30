@@ -33,16 +33,13 @@ extern {
 pub fn unpack(src: &[u32],
               clut: &AtomicUsize,
               target: &mut [u8]) {
-    let words_in_input = core::cmp::min(
-        src.len(),
-        target.len() / 32,
-    );
+    assert_eq!(src.len() * 32, target.len());
     unsafe {
         unpack_1bpp_impl(
             src.as_ptr(),
             clut,
             target.as_mut_ptr(),
-            words_in_input,
+            src.len(),
         )
     }
 }
@@ -55,16 +52,14 @@ pub fn unpack_overlay(src: &[u32],
               clut: &AtomicUsize,
               background: &[u8],
               target: &mut [u8]) {
-    let words_in_input = core::cmp::min(
-        core::cmp::min(src.len(), background.len()),
-        target.len() / 32,
-    );
+    assert_eq!(src.len() * 32, target.len());
+    assert_eq!(target.len(), background.len());
     unsafe {
         unpack_1bpp_overlay_impl(
             src.as_ptr(),
             clut,
             target.as_mut_ptr(),
-            words_in_input,
+            src.len(),
             background.as_ptr(),
         )
     }
