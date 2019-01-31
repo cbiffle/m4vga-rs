@@ -11,8 +11,36 @@ use super::Pixel;
 /// Number of pixels in the target buffers given to raster callbacks.
 pub const TARGET_BUFFER_SIZE: usize = super::MAX_PIXELS_PER_LINE + 32;
 
-/// The type given to raster callbacks by reference, to fill with pixels.
-pub type TargetBuffer = [Pixel; TARGET_BUFFER_SIZE];
+/// The type given to raster callbacks by reference, to fill with pixels. This
+/// is word-aligned but we usually pun it as `u8`.
+pub struct TargetBuffer([u32; TARGET_BUFFER_SIZE / 4]);
+
+impl TargetBuffer {
+    pub fn as_words(&self) -> &[u32; TARGET_BUFFER_SIZE / 4] {
+        &self.0
+    }
+
+    pub fn as_words_mut(&mut self) -> &mut [u32; TARGET_BUFFER_SIZE / 4] {
+        &mut self.0
+    }
+}
+
+impl core::ops::Deref for TargetBuffer {
+    type Target = [Pixel; TARGET_BUFFER_SIZE];
+    fn deref(&self) -> &Self::Target {
+        unsafe {
+            core::mem::transmute(&self.0)
+        }
+    }
+}
+
+impl core::ops::DerefMut for TargetBuffer {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe {
+            core::mem::transmute(&mut self.0)
+        }
+    }
+}
 
 /// Context passed to raster callbacks. Filled out with default values by the
 /// driver; callbacks can alter its contents.

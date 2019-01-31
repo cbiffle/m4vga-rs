@@ -125,7 +125,7 @@ fn main() -> ! {
                     text_10x16::unpack(
                         &*TEXT_BUF.try_lock().expect("rast buf access"),
                         font_10x16::FONT.as_glyph_slices(),
-                        tgt,
+                        &mut **tgt,
                         ln,
                         COLS,
                     );
