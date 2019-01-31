@@ -46,7 +46,7 @@ fn main() -> ! {
             |ln, tgt, ctx| {
                 m4vga::measurement::sig_d_set();
 
-                let fg = fg.lock_uncontended().expect("fg unavail");
+                let fg = fg.try_lock().expect("fg unavail");
 
                 m4vga::measurement::sig_d_clear();
 

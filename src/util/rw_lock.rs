@@ -31,9 +31,6 @@ pub enum TryLockError {
     /// A conflicting type of guard exists for the lock, so the operation will
     /// not succeed until that guard is released.
     Unavailable,
-    /// The operation failed due to a preemption / race, but will likely succeed
-    /// if retried.
-    Race,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -49,53 +46,38 @@ impl<T: ?Sized> ReadWriteLock<T> {
     /// If this succeeds, the returned `Guard<T>` can be used to access the
     /// contents of the lock, with the guarantee that they will not be mutated.
     ///
-    /// This can fail for two reasons, encoded in the values of `TryLockError`.
-    ///
-    /// 1. If some other code holds a `GuardMut<T>` on `self`, the contents may
-    ///    change and so we can't get our lock. In this case, the error is
-    ///    `TryLockError::Unavailable`.
-    ///
-    /// 2. If a higher-priority task (i.e. an ISR) preempts us and takes out a
-    ///    lock while this function is executing, we have to try again. In this
-    ///    case, the error is `TryLockError::Race`.
-    ///
-    /// These cases are distinguished because, if you're confident that code is
-    /// not going to get preempted, calling `try_lock` and treating the
-    /// (allegedly impossible) `Race` case as an error is significantly cheaper
-    /// than including a retry loop.
+    /// This can fail if a write lock is held, or is taken out by a preempting
+    /// higher-priority task.
     pub fn try_lock(&self) -> Result<Guard<T>, TryLockError> {
-        // Observe our current status. If it does not allow a read guard to be
-        // created, abort.
-        let status = self.status.load(Ordering::Acquire);
-        if read_unavail(status) {
-            return Err(TryLockError::Unavailable)
-        }
-
-        // Attempt to atomically increment the status to record a new read
-        // guard. If this succeeds, we've locked it. If this fails, some
-        // higher-priority task has come through during the last few
-        // instructions -- indicate a race.
-        self.status.compare_exchange_weak(
-            status,
-            status + 1,
-            Ordering::Release,
-            Ordering::Relaxed
-        ).map(|_| Guard {
-            borrow: Borrow(&self.status),
-            // Safety: we're locked, so it's safe to generate a *shared*
-            // reference.
-            value: unsafe { &*self.value.get() },
-        }).map_err(|_| TryLockError::Race)
-    }
-
-    /// Locks `self` for reading, retrying on races but failing on actual
-    /// contention.
-    pub fn lock_uncontended(&self) -> Result<Guard<T>, ()> {
+        // I know this looks like an infinite loop, but it will only retry if
+        // `try_lock` is preempted by another call to `try_lock` on the same
+        // lock.
         loop {
-            match self.try_lock() {
-                Ok(guard) => return Ok(guard),
-                Err(TryLockError::Race) => continue,
-                Err(_) => return Err(())
+            // Observe our current status. If it does not allow a read guard to
+            // be created, abort.
+            let status = self.status.load(Ordering::Acquire);
+            if read_unavail(status) {
+                return Err(TryLockError::Unavailable)
+            }
+
+            // Attempt to atomically increment the status to record a new read
+            // guard. If this succeeds, we've locked it. If this fails, some
+            // higher-priority task has come through during the last few
+            // instructions -- indicate a race.
+            let cmpxchg_result = self.status.compare_exchange_weak(
+                status,
+                status + 1,
+                Ordering::Release,
+                Ordering::Relaxed
+            );
+            match cmpxchg_result {
+                Ok(_) => break Ok(Guard {
+                    borrow: Borrow(&self.status),
+                    // Safety: we're locked, so it's safe to generate a *shared*
+                    // reference.
+                    value: unsafe { &*self.value.get() },
+                }),
+                Err(_) => continue,
             }
         }
     }
@@ -110,23 +92,36 @@ impl<T: ?Sized> ReadWriteLock<T> {
         }
     }
 
+    /// Attempts to lock `self` for mutation.
+    ///
+    /// If this succeeds, the returned `GuardMut<T>` can be used to access the
+    /// contents of the lock, with the guarantee that no other task has access.
+    ///
+    /// This can fail if any read lock is held, or is taken out by a preempting
+    /// higher-priority task.
     pub fn try_lock_mut(&self) -> Result<GuardMut<T>, TryLockMutError> {
-        let status = self.status.load(Ordering::Acquire);
-        if status != 0 {
-            return Err(TryLockMutError::Unavailable)
-        }
+        loop {
+            let status = self.status.load(Ordering::Acquire);
+            if status != 0 {
+                return Err(TryLockMutError::Unavailable)
+            }
 
-        self.status.compare_exchange(
-            status,
-            status - 1,
-            Ordering::Release,
-            Ordering::Relaxed
-        ).map(|_| GuardMut {
-            borrow: BorrowMut(&self.status),
-            // Safety: we're exclusively locked, so it's safe to generate an
-            // exclusive reference.
-            value: unsafe { &mut *self.value.get() },
-        }).map_err(|_| TryLockMutError::Unavailable)
+            let cmpxchg_result = self.status.compare_exchange_weak(
+                status,
+                status - 1,
+                Ordering::Release,
+                Ordering::Relaxed
+            );
+            match cmpxchg_result {
+                Ok(_) => break Ok(GuardMut {
+                    borrow: BorrowMut(&self.status),
+                    // Safety: we're exclusively locked, so it's safe to
+                    // generate an exclusive reference.
+                    value: unsafe { &mut *self.value.get() },
+                }),
+                Err(_) => continue,
+            }
+        }
     }
 
     /// Locks `self` for mutation, spinning forever if necessary.
