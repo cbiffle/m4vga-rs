@@ -14,6 +14,29 @@ This is a rewrite of the C++ library [`m4vgalib`][11], plus ports of my
 Mostly because it's really hard. I've got four CPU cycles *per pixel* to work
 with, and any variation in timing will corrupt the display.
 
+## The Demos
+
+The demos all live in [src/bin][3]. As of this writing, they are:
+
+- [`conway`][conway]: full-screen [Conway's Game of Life][4] at 60fps -- that's
+  28.8 million cell updates per second, for a budget of 5 cycles per update
+  (not counting video generation).
+
+- [`hires_text`][hires_text]: 80x37 text mode. Each character has adjustable
+  foreground and background colors. This is boring to watch but technically
+  interesting.
+
+- [`horiz_tp`][horiz_tp]: generates a display calibration pattern of vertical
+  stripes. This also demonstrates how to write a simple `m4vga`-based demo in
+  40 lines of code.
+
+- [`tunnel`][tunnel]: demoscene "tunnel zoomer" effect drawing shaded textured
+  graphics at 60fps.
+ 
+- [`xor_pattern`][xor_pattern]: fullscreen proceudral texture with smooth
+  scrolling.  Demonstrates how to add a custom assembly language raster
+  function.
+
 ## Building it
 
 You will need an STM32F407-based board to run this on; I use the
@@ -26,6 +49,20 @@ cross compilation target we're using here:
 
 ```shell
 $ rustup target add thumbv7em-none-eabihf
+```
+
+You will also need a GNU ARM toolchain to compile the assembly language
+routines. On Arch:
+
+```shell
+$ sudo pacman -S arm-none-eabi-{gcc,newlib}
+```
+
+On Ubuntu, the system ships an *ancient* version of GCC, but since we're only
+assembling this is okay:
+
+```shell
+$ sudo apt-get install gcc-arm-none-eabi
 ```
 
 Now you should be able to compile everything by entering:
@@ -370,8 +407,16 @@ So far two interesting side effects have come up:
 
 [1]: https://github.com/cbiffle/m4vgalib-demos
 [2]: https://rust-lang.org
+[3]: src/bin
+[4]: https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life
 [5]: https://docs.rs/crossbeam/0.7.1/crossbeam/thread/
 [6]: https://rust-embedded.github.io/book
 [7]: https://github.com/cbiffle/m4vgalib-demos/blob/master/README.mkdn#connections
 [8]: https://en.wiktionary.org/wiki/footgun
 [11]: https://github.com/cbiffle/m4vgalib
+
+[conway]: src/bin/conway
+[hires_text]: src/bin/hires_text.rs
+[horiz_tp]: src/bin/horiz_tp.rs
+[tunnel]: src/bin/tunnel
+[xor_pattern]: src/bin/xor_pattern
