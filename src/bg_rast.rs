@@ -97,7 +97,6 @@ pub fn maintain_raster_isr() {
             // in this section does not depend on any user choices -- not on the
             // rasterizer, line length, etc. So it stays pretty reliable.
 
-            #[cfg(feature = "measurement")]
             crate::measurement::sig_b_set();  // signal critical section entry
 
             let mut share = acquire_hw(&HPSHARE); // ENTRY
@@ -117,7 +116,6 @@ pub fn maintain_raster_isr() {
                 use_timer,
             };
 
-            #[cfg(feature = "measurement")]
             crate::measurement::sig_b_clear();  // signal critical section exit
         }
 
@@ -141,7 +139,6 @@ pub fn maintain_raster_isr() {
     // As a result, we just stash our results in places where the *next* PendSV
     // will find and apply them.
     if vs.is_rendered_state() {
-        #[cfg(feature = "measurement")]
         crate::measurement::sig_b_set();  // signal rasterizer entry
 
         // Smart pointers are great, but I can't borrow multiple paths from them
@@ -162,7 +159,6 @@ pub fn maintain_raster_isr() {
             &mut state.working_buffer,
         );
 
-        #[cfg(feature = "measurement")]
         crate::measurement::sig_b_clear();  // signal rasterizer exit
     }
 }

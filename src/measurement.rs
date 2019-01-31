@@ -1,4 +1,5 @@
-//! Performance measurement support using GPIOs.
+//! Performance measurement support using GPIOs, compiled out unless the
+//! `measurement` feature is set.
 //!
 //! This totally circumvents all hardware ownership.
 
@@ -11,6 +12,7 @@ use stm32f4::stm32f407 as device;
 /// This is safe *as long as* it's not preempted. If interrupts are enabled, and
 /// interrupts attempt to configure either RCC or GPIOC, their updates may be
 /// reverted. Call this from early in `main` and you're good.
+#[cfg(feature = "measurement")]
 pub unsafe fn init() {
     let rcc = &*device::RCC::ptr();
     let gpioc = &*device::GPIOC::ptr();
@@ -37,12 +39,21 @@ pub unsafe fn init() {
                        )
 }
 
+#[cfg(not(feature = "measurement"))]
+pub unsafe fn init() {}
+
+#[cfg(feature = "measurement")]
 fn write_gpioc_bsrr<F>(op: F)
 where F: FnOnce(&mut device::gpioi::bsrr::W) -> &mut device::gpioi::bsrr::W
 {
     // Safety: writes to this register are atomic and idempotent.
     unsafe { &*device::GPIOC::ptr() }.bsrr.write(op);
 }
+
+#[cfg(not(feature = "measurement"))]
+fn write_gpioc_bsrr<F>(_: F)
+where F: FnOnce(&mut device::gpioi::bsrr::W) -> &mut device::gpioi::bsrr::W
+{}
 
 pub fn sig_a_set() {
     write_gpioc_bsrr(|w| w.bs8().set_bit());

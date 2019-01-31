@@ -12,7 +12,6 @@ use crate::util::stm32::CopyHack;
 ///
 /// Note: this is `etl_stm32f4xx_tim4_handler` in the C++.
 pub fn hstate_isr() {
-    #[cfg(feature = "measurement")]
     crate::measurement::sig_a_set();
 
     // Start a critical section wrt PendSV here. We're higher priority, so
@@ -62,7 +61,6 @@ pub fn hstate_isr() {
         LINE.store(line, Ordering::Relaxed);
     }
 
-    #[cfg(feature = "measurement")]
     crate::measurement::sig_a_clear();
 }
 

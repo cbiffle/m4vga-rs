@@ -44,12 +44,10 @@ fn main() -> ! {
         // ... and provide a raster callback.
         .with_raster(
             |ln, tgt, ctx| {
-                #[cfg(feature = "measurement")]
                 m4vga::measurement::sig_d_set();
 
                 let fg = fg.lock_uncontended().expect("fg unavail");
 
-                #[cfg(feature = "measurement")]
                 m4vga::measurement::sig_d_clear();
 
                 let offset = ln * (800 / 32);

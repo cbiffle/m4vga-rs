@@ -5,7 +5,6 @@ pub mod rast;
 pub mod util;
 pub mod font_10x16;
 
-#[cfg(feature = "measurement")]
 pub mod measurement;
 
 mod startup;
@@ -343,7 +342,6 @@ pub fn init(mut nvic: cm::NVIC,
     -> Vga<Idle>
 {
 
-    #[cfg(feature = "measurement")]
     unsafe { measurement::init(); }
 
     let previous_instance = DRIVER_INIT_FLAG.swap(true, Ordering::SeqCst);
