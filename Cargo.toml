@@ -7,7 +7,12 @@ version = "0.1.0"
 
 [features]
 default = ["panic-itm"]
+# Generates diagnostic waveforms showing interrupt entry/exit, etc., using free
+# pins on GPIOC.
 measurement = []
+# Moves the 10x16 font into RAM by default, which may improve performance of
+# text rendering.
+ram-font = []
 
 [dependencies]
 cortex-m = "0.5.8"

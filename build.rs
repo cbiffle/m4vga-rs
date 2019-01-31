@@ -19,11 +19,13 @@ fn main() {
     cc::Build::new()
         .file("src/asm/unpack_1bpp.S")
         .file("src/asm/unpack_1bpp_overlay.S")
+        .file("src/asm/unpack_text_10p_attributed.S")
         .file("src/asm/copy_words.S")
         .compile("libunrusted.a");
     println!("cargo:rerun-if-changed=src/asm/copy_words.S");
     println!("cargo:rerun-if-changed=src/asm/unpack_1bpp.S");
     println!("cargo:rerun-if-changed=src/asm/unpack_1bpp_overlay.S");
+    println!("cargo:rerun-if-changed=src/asm/unpack_text_10p_attributed.S");
 
     cc::Build::new()
         .file("src/bin/xor_pattern/pattern.S")

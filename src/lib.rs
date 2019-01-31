@@ -3,14 +3,13 @@
 pub mod timing;
 pub mod rast;
 pub mod util;
+pub mod font_10x16;
 
 #[cfg(feature = "measurement")]
 pub mod measurement;
 
 mod startup;
 
-#[allow(unused)] // TODO
-mod font_10x16;
 
 mod hstate;
 mod bg_rast;
