@@ -20,6 +20,7 @@ cortex-m-rt = "0.6.7"
 cortex-m-semihosting = "0.3.2"
 panic-itm = {version = "0.4.0", optional = true}
 panic-halt = {version = "0.2.0", optional = true}
+libm = "0.1.2"
 #stm32f4xx-hal = "0.2.4"
 #stm32f407g-disc = "0.1.2"
 
