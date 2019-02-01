@@ -3,3 +3,5 @@
 .gdb_history
 Cargo.lock
 target/
+.swp
+.*.swp
