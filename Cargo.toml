@@ -53,7 +53,29 @@ lto = true # better optimizations
 # `bench` to `false` and enable `cargo fix` and equivalents.
 
 [[bin]]
+name = "conway"
+test = false
+bench = false
+
+[[bin]]
+name = "hires_text"
+test = false
+bench = false
+
+[[bin]]
 name = "horiz_tp"
 path = "src/bin/horiz_tp.rs"
 test = false
 bench = false
+
+[[bin]]
+name = "tunnel"
+test = false
+bench = false
+
+[[bin]]
+name = "xor_pattern"
+test = false
+bench = false
+
+
