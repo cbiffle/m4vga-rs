@@ -8,9 +8,20 @@ use crate::{vert_state, set_vert_state, VState, TIMING, LINE, HPSHARE, acquire_h
 use crate::timing::Timing;
 use crate::util::stm32::CopyHack;
 
-/// Entry point for the horizontal timing state machine ISR.
+/// Horizontal state machine ISR: call this from `TIM4`.
 ///
-/// Note: this is `etl_stm32f4xx_tim4_handler` in the C++.
+/// This is one of three ISRs you must wire up for the driver to work. In the
+/// simplest case, this means your application needs to include code like the
+/// following:
+///
+/// ```
+/// use stm32f4::interrupt;
+///
+/// #[interrupt]
+/// fn TIM4() {
+///     m4vga::tim4_horiz_isr()
+/// }
+/// ```
 pub fn hstate_isr() {
     crate::measurement::sig_a_set();
 

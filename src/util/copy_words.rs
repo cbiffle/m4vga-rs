@@ -1,10 +1,6 @@
-extern {
-    fn copy_words_impl(source: *const u32,
-                       dest: *mut u32,
-                       count: usize);
-}
+//! A very fast routine for moving data around.
 
-/// Copies words (type `u32`) from `source` to `dest`, really quickly.
+/// Copies words (type `u32`) from `source` to `dest` -- really, really quickly.
 ///
 /// This uses an optimized assembly language copy routine that asymptotically
 /// approaches 2 CPU cycles per word transferred, as the transfer gets longer.
@@ -27,4 +23,10 @@ pub fn copy_words(source: &[u32], dest: &mut [u32]) {
     unsafe {
         copy_words_impl(source.as_ptr(), dest.as_mut_ptr(), dest.len())
     }
+}
+
+extern {
+    fn copy_words_impl(source: *const u32,
+                       dest: *mut u32,
+                       count: usize);
 }

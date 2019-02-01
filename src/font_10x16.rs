@@ -1,4 +1,5 @@
-/// A bitmapped font.
+//! A bitmapped ASCII font with 10x16 pixel characters.
+
 #[derive(Clone)]
 pub struct Font([u8; 4096]);
 

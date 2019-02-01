@@ -73,7 +73,18 @@ static mut RASTER_STATE: SpinLock<RasterState> = SpinLock::new(RasterState {
 #[link_section = ".scanout_ram"]
 static mut GLOBAL_SCANOUT_BUFFER: WorkingBuffer = [0; WORKING_BUFFER_SIZE];
 
-/// Entry point for the raster maintenance ISR, invoked as PendSV.
+/// Raster ISR: call this from `PendSV`.
+///
+/// This is one of three ISRs you must wire up for the driver to work. In the
+/// simplest case, this means your application needs to include code like the
+/// following:
+///
+/// ```
+/// #[cortex_m_rt::exception]
+/// fn PendSV() {
+///     m4vga::pendsv_raster_isr()
+/// }
+/// ```
 pub fn maintain_raster_isr() {
     // Safety: RASTER_STATE is mut only because it captures a &mut to
     // GLOBAL_WORKING_BUFFER in its initializer, and rustc is picky about that

@@ -168,6 +168,7 @@ impl<'a> Drop for Borrow<'a> {
     }
 }
 
+/// Smart pointer type representing a write lock on a `ReadWriteLock`.
 pub struct GuardMut<'a, T: ?Sized> {
     borrow: BorrowMut<'a>,
     value: &'a mut T,

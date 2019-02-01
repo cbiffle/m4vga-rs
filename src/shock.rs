@@ -22,9 +22,20 @@ pub static SHOCK_TIMER: SpinLock<Option<device::TIM3>> = SpinLock::new(None);
 
 pub const SHOCK_ABSORBER_SHIFT_CYCLES: u32 = 20;
 
-/// Entry point for the shock absorber ISR.
+/// Shock absorber ISR: call this from `TIM3`.
 ///
-/// Note: this is `etl_stm32f4xx_tim3_handler` in the C++.
+/// This is one of three ISRs you must wire up for the driver to work. In the
+/// simplest case, this means your application needs to include code like the
+/// following:
+///
+/// ```
+/// use stm32f4::interrupt;
+///
+/// #[interrupt]
+/// fn TIM3() {
+///     m4vga::tim3_shock_isr()
+/// }
+/// ```
 pub fn shock_absorber_isr() {
     // Acknowledge IRQ so it doesn't re-occur.
     acquire_hw(&SHOCK_TIMER)

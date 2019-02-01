@@ -1,44 +1,65 @@
+//! Definition of display timing and modes.
+
 use crate::util::stm32;
 use stm32f4::stm32f407 as device;
 
+/// Minimum number of CPU/AHB cycles per pixel.
+///
+/// This is a fundamental hardware limitation. (Though if you can prove
+/// otherwise, please write me.)
 pub const MIN_CYCLES_PER_PIXEL: usize = 4;
 
 // TODO: I want this to be Debug, but svd2rust hates me.
 /// Defines the timing parameters for a video mode.
+///
+/// The horizontal and vertical timing information are each expressed
+/// differently, so that each can be consumed efficiently by the implementation.
 #[derive(Clone)]
 pub struct Timing {
+    /// Configuration for the system clocks and PLL to achieve this timing.
+    ///
+    /// When activating a video timing, this configuration will be applied to
+    /// the system using
+    /// [`configure_clocks`](../util/stm32/fn.configure_clocks.html).
     pub clock_config: stm32::ClockConfig,
 
-    /// Number of additional AHB cycles per pixel clock cycle. The driver uses a
-    /// minimum of 4 cycles per pixel; this field adds to that. Larger values
-    /// reduce both the resolution and the compute/bandwidth requirements.
+    /// Number of additional AHB cycles per pixel clock cycle. This is added to
+    /// the hardware minimum of 4 cycles per pixel (see
+    /// [`MIN_CYCLES_PER_PIXEL`]). Values greater than zero reduce both the
+    /// resolution and the compute/bandwidth requirements.
+    ///
+    /// [`MIN_CYCLES_PER_PIXEL`]: constant.MIN_CYCLES_PER_PIXEL.html
     pub add_cycles_per_pixel: usize,
 
     /// Total horizontal pixels per line, including blanking.
     pub line_pixels: usize,
-    /// Length of horizontal sync pulse.
+    /// Length of horizontal sync pulse, in pixels.
     pub sync_pixels: usize,
-    /// Number of pixels between end of sync and start of video.
+    /// Number of pixels between end of sync and start of video (the "back
+    /// porch").
     pub back_porch_pixels: usize,
-    /// Fudge factor, nudging the DMA interrupt backwards in time to compensate
-    /// for startup code taking non-zero time.
+    /// Moves the start-of-video interrupt backwards in time, to compensate for
+    /// interrupt latency and code execution time. Measured in units of pixel
+    /// clocks.
     pub video_lead: usize,
-    /// Maximum visible pixels per line.
+    /// Maximum visible pixels per line. This controls the timing of the
+    /// end-of-active interrupt.
     pub video_pixels: usize,
     /// Polarity of horizontal sync pulse.
     pub hsync_polarity: Polarity,
 
-    /// Scanline number of onset of vertical sync pulse, numbered from end of
-    /// active video.
+    /// Scanline number of onset of vertical sync pulse, numbered from the top
+    /// of the vertical blanking interval.
     pub vsync_start_line: usize,
-    /// Scanline number of end of vertical sync pulse, numbered from end of
-    /// active video.
+    /// Scanline number of end of vertical sync pulse, numbered from the top of
+    /// the vertical blanking interval.
     pub vsync_end_line: usize,
-    /// Scanline number of start of active video, numbered from end of active
-    /// video.
+    /// Scanline number of start of active video, numbered from the top of the
+    /// vertical blanking interval.
     pub video_start_line: usize,
-    /// Scanline number of end of active video, numbered from end of active
-    /// video in the last frame. This is the number of lines per frame.
+    /// Scanline number of end of active video, numbered from the top of the
+    /// vertical blanking interval. This is also the total number of lines per
+    /// frame, including the VBI.
     pub video_end_line: usize,
     /// Polarity of the vertical sync pulse.
     pub vsync_polarity: Polarity,
@@ -51,9 +72,11 @@ impl Timing {
     }
 }
 
+/// Polarity of a sync pulse, and, by implication, the idle state of the sync
+/// signal.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Polarity {
-    Positive = 0,
+    Positive = 0, // note: value assignments for cheaper timer configuration
     Negative = 1,
 }
 

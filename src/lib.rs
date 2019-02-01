@@ -28,42 +28,89 @@ use crate::rast::{RasterCtx, TargetBuffer};
 use crate::timing::Polarity;
 
 /// Representation of a pixel in memory.
+///
+/// The driver consistently uses 8 bits per pixel. It is technically possible to
+/// upgrade to 16, but performance is not great.
+///
+/// Moreover, many demos assume that only the bottom 6 bits are significant,
+/// encoded as `0bBB_GG_RR`.
 pub type Pixel = u8;
 
+/// Maximum number of visible pixels in a scanline.
+///
 /// Timing limitations mean we can't really pull off modes above 800x600, so
 /// we'll use this fact to size some data structures.
 pub const MAX_PIXELS_PER_LINE: usize = 800;
 
-/// Raster ISR; needs to be called from `PendSV`.
+// re-export ISR entry points
+
 pub use crate::bg_rast::maintain_raster_isr as pendsv_raster_isr;
-/// Shock absorber ISR; needs to be called from `TIM3`.
 pub use crate::shock::shock_absorber_isr as tim3_shock_isr;
-/// Horizontal state machine ISR; needs to be called from `TIM4`.
 pub use crate::hstate::hstate_isr as tim4_horiz_isr;
 
-/// Driver state.
+/// Driver handle.
 ///
-/// The `MODE` parameter tracks the state of the driver at compile time, and
-/// changes what operations are available.
-pub struct Vga<MODE> {
+/// You can obtain a handle using either [`init`] or [`take_hardware`] depending
+/// on your needs. Only one handle exists; if you try to get a second one, the
+/// system will panic.
+///
+/// Driver handles use the [typestate pattern] to avoid usage errors. In brief,
+/// the handle type has a parameter, `S`, that controls which methods are
+/// available at compile time.
+///
+/// - The driver handle returned by [`init`] and [`take_hardware`] is a
+///   `Vga<Idle>`.
+/// - `Vga<Idle>` has operations for configuring timing. The
+///   [`configure_timing`] method consumes it and returns `Vga<Ready>`.
+/// - `Vga<Ready>` has operations for beginning rasterization. The
+///   [`with_raster`] method borrows it and provides a `Vga<Live>`.
+/// - `Vga<Live>` has operations for messing with video output.
+/// - `Ready` and `Live` are both impls of `SyncOn`, and `Vga<T: SyncOn>` sports
+///   common methods that are legal in any state where sync is being generated.
+///
+/// None of these operations are available in other states, so that programs
+/// cannot, for example, attempt to synchronize with vblank when vertical sync
+/// is not yet being generated. (The alternatives in that case are to wait
+/// forever or panic; catching this at compile time is preferable.)
+///
+/// [`init`]: fn.init.html
+/// [`take_hardware`]: fn.take_hardware.html
+/// [`configure_timing`]: #method.configure_timing
+/// [`with_raster`]: #method.with_raster
+/// [typestate pattern]: https://yoric.github.io/post/rust-typestate/
+pub struct Vga<S> {
     rcc: device::RCC,
     flash: device::FLASH,
     gpioe: device::GPIOE,
     nvic: cm::NVIC,  // TODO probably should not own this
 
-    mode_state: MODE,
+    mode_state: S,
 }
 
-/// Driver mode right after initialization, but before `configure_timing`.
+/// Driver mode right after initialization, but before [`configure_timing`].
+///
+/// See [`Vga`] for discussion of this pattern.
+///
+/// [`configure_timing`]: struct.Vga.html#method.configure_timing
+/// [`Vga`]: struct.Vga.html
 pub struct Idle {
     hstate: HStateHw,
     tim3: device::TIM3,
 }
 
-/// Driver mode once timing has been configured.
+/// Driver mode once timing has been configured, but before rasterization has
+/// been enabled.
+///
+/// See [`Vga`] for discussion of this pattern.
+///
+/// [`Vga`]: struct.Vga.html
 pub struct Sync(());
 
 /// Driver mode once rasterization has been configured.
+///
+/// See [`Vga`] for discussion of this pattern.
+///
+/// [`Vga`]: struct.Vga.html
 pub struct Live(());
 
 /// Trait for driver states where sync signals are being generated.
@@ -325,8 +372,40 @@ impl Vga<Live> {
 
 /// Initializes the driver using the given hardware capabilities.
 ///
-/// The driver is returned in `Idle` state, meaning output has not yet started.
-/// You will likely want to call `configure_timing` followed by `with_raster`.
+/// You can get the capabilities from the `cortex_m` and `stm32f4` crates like
+/// so:
+///
+/// ```
+/// let mut cp = cortex_m::peripheral::Peripherals::take().unwrap();
+/// let p = stm32f4::stm32f407::Peripherals::take().unwrap();
+///
+/// let vga = m4vga::init(
+///     cp.NVIC,
+///     &mut cp.SCB,
+///     p.FLASH,
+///     &p.DBG,
+///     p.RCC,
+///     p.GPIOB,
+///     p.GPIOE,
+///     p.TIM1,
+///     p.TIM3,
+///     p.TIM4,
+///     p.DMA2)
+/// );
+/// ```
+///
+/// The driver is returned in [`Idle`] state, meaning output has not yet
+/// started.  You will likely want to call [`configure_timing`] followed by
+/// [`with_raster`].
+///
+/// This variant is useful if you want to *retain* access to peripherals not
+/// used by the driver, to do other things. If you're not using hardware other
+/// than video output, [`take_hardware`] is a simpler option.
+///
+/// [`take_hardware`]: fn.take_hardware.html
+/// [`Idle`]: struct.Idle.html
+/// [`configure_timing`]: struct.Vga.html#method.configure_timing
+/// [`with_raster`]: struct.Vga.html#method.with_raster
 pub fn init(mut nvic: cm::NVIC,
             scb: &mut cm::SCB,
             flash: device::FLASH,
@@ -337,8 +416,7 @@ pub fn init(mut nvic: cm::NVIC,
             tim1: device::TIM1,
             tim3: device::TIM3,
             tim4: device::TIM4,
-            dma2: device::DMA2,
-            )
+            dma2: device::DMA2)
     -> Vga<Idle>
 {
 
@@ -423,8 +501,23 @@ pub fn init(mut nvic: cm::NVIC,
     vga
 }
 
-/// Simplified version of `init` that assumes ownership of all hardware. This
-/// covers the common case of pure graphics demos.
+/// Starts up the video driver, taking possession of all hardware peripherals.
+///
+/// ```
+/// let vga = m4vga::take_hardware();
+/// ```
+///
+/// The driver is returned in [`Idle`] state, meaning output has not yet
+/// started.  You will likely want to call [`configure_timing`] followed by
+/// [`with_raster`].
+///
+/// This is shorthand for [`init`] for cases where you don't plan on using
+/// hardware other than video output.
+///
+/// [`init`]: fn.init.html
+/// [`Idle`]: struct.Idle.html
+/// [`configure_timing`]: struct.Vga.html#method.configure_timing
+/// [`with_raster`]: struct.Vga.html#method.with_raster
 pub fn take_hardware() -> Vga<Idle> {
     let mut cp = cortex_m::peripheral::Peripherals::take().unwrap();
     let p = device::Peripherals::take().unwrap();

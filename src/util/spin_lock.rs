@@ -1,3 +1,5 @@
+//! Bare metal spinlocks using atomic memory operations.
+
 use core::sync::atomic::{Ordering, AtomicBool};
 use core::cell::UnsafeCell;
 

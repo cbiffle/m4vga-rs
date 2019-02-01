@@ -1,46 +1,57 @@
 //! Performance measurement support using GPIOs, compiled out unless the
 //! `measurement` feature is set.
 //!
-//! This totally circumvents all hardware ownership.
+//! Because this is intended as a debug facility, this totally circumvents all
+//! hardware ownership. If your application is using the measurement output pins
+//! (C8-C11) for anything... weird stuff ensues.
+//!
+//! The mapping of API signals to pins is currently:
+//!
+//! - A: C8
+//! - B: C9
+//! - C: C10
+//! - D: C11
 
 use stm32f4::stm32f407 as device;
 
 /// Sets up the measurement subsystem.
+///
+/// Note: if the `measurement` feature is enabled, this will power on GPIOC and
+/// configure pins 8-11 as outputs.
 ///
 /// # Safety
 ///
 /// This is safe *as long as* it's not preempted. If interrupts are enabled, and
 /// interrupts attempt to configure either RCC or GPIOC, their updates may be
 /// reverted. Call this from early in `main` and you're good.
-#[cfg(feature = "measurement")]
 pub unsafe fn init() {
-    let rcc = &*device::RCC::ptr();
-    let gpioc = &*device::GPIOC::ptr();
+    #[cfg(feature = "measurement")]
+    {
+        let rcc = &*device::RCC::ptr();
+        let gpioc = &*device::GPIOC::ptr();
 
-    rcc.ahb1enr.modify(|_, w| w.gpiocen().set_bit());
+        rcc.ahb1enr.modify(|_, w| w.gpiocen().set_bit());
 
-    gpioc.pupdr.modify(|_, w| w
-                       .pupdr8().floating()
-                       .pupdr9().floating()
-                       .pupdr10().floating()
-                       .pupdr11().floating()
-                       );
-    gpioc.ospeedr.modify(|_, w| w
-                         .ospeedr8().very_high_speed()
-                         .ospeedr9().very_high_speed()
-                         .ospeedr10().very_high_speed()
-                         .ospeedr11().very_high_speed()
-                         );
-    gpioc.moder.modify(|_, w| w
-                       .moder8().output()
-                       .moder9().output()
-                       .moder10().output()
-                       .moder11().output()
-                       )
+        gpioc.pupdr.modify(|_, w| w
+                           .pupdr8().floating()
+                           .pupdr9().floating()
+                           .pupdr10().floating()
+                           .pupdr11().floating()
+        );
+        gpioc.ospeedr.modify(|_, w| w
+                             .ospeedr8().very_high_speed()
+                             .ospeedr9().very_high_speed()
+                             .ospeedr10().very_high_speed()
+                             .ospeedr11().very_high_speed()
+        );
+        gpioc.moder.modify(|_, w| w
+                           .moder8().output()
+                           .moder9().output()
+                           .moder10().output()
+                           .moder11().output()
+        )
+    }
 }
-
-#[cfg(not(feature = "measurement"))]
-pub unsafe fn init() {}
 
 #[cfg(feature = "measurement")]
 fn write_gpioc_bsrr<F>(op: F)
@@ -55,34 +66,58 @@ fn write_gpioc_bsrr<F>(_: F)
 where F: FnOnce(&mut device::gpioi::bsrr::W) -> &mut device::gpioi::bsrr::W
 {}
 
+/// Set measurement signal A.
+///
+/// If the `measurement` feature is not set, this is a no-op.
 pub fn sig_a_set() {
     write_gpioc_bsrr(|w| w.bs8().set_bit());
 }
 
+/// Clear measurement signal A.
+///
+/// If the `measurement` feature is not set, this is a no-op.
 pub fn sig_a_clear() {
     write_gpioc_bsrr(|w| w.br8().set_bit());
 }
 
+/// Set measurement signal B.
+///
+/// If the `measurement` feature is not set, this is a no-op.
 pub fn sig_b_set() {
     write_gpioc_bsrr(|w| w.bs9().set_bit());
 }
 
+/// Clear measurement signal B.
+///
+/// If the `measurement` feature is not set, this is a no-op.
 pub fn sig_b_clear() {
     write_gpioc_bsrr(|w| w.br9().set_bit());
 }
 
+/// Set measurement signal C.
+///
+/// If the `measurement` feature is not set, this is a no-op.
 pub fn sig_c_set() {
     write_gpioc_bsrr(|w| w.bs10().set_bit());
 }
 
+/// Clear measurement signal C.
+///
+/// If the `measurement` feature is not set, this is a no-op.
 pub fn sig_c_clear() {
     write_gpioc_bsrr(|w| w.br10().set_bit());
 }
 
+/// Set measurement signal D.
+///
+/// If the `measurement` feature is not set, this is a no-op.
 pub fn sig_d_set() {
     write_gpioc_bsrr(|w| w.bs11().set_bit());
 }
 
+/// Clear measurement signal D.
+///
+/// If the `measurement` feature is not set, this is a no-op.
 pub fn sig_d_clear() {
     write_gpioc_bsrr(|w| w.br11().set_bit());
 }
