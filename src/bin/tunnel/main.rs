@@ -220,8 +220,14 @@ fn render(table: &table::Table,
     }
 }
 
+#[cfg(not(feature = "no-shading"))]
 fn color(distance: f32, fd: f32, fa: f32) -> u32 {
     shade(distance, tex_fetch(fd, fa))
+}
+
+#[cfg(feature = "no-shading")]
+fn color(distance: f32, fd: f32, fa: f32) -> u32 {
+    tex_fetch(fd, fa)
 }
 
 fn shade(distance: f32, pixel: u32) -> u32 {
@@ -236,8 +242,14 @@ fn shade(distance: f32, pixel: u32) -> u32 {
     }
 }
 
+#[cfg(not(feature = "alt-texture"))]
 fn tex_fetch(x: f32, y: f32) -> u32 {
     x as u32 ^ y as u32
+}
+
+#[cfg(feature = "alt-texture")]
+fn tex_fetch(x: f32, y: f32) -> u32 {
+    (x * y).to_bits()
 }
 
 fn u32_as_u8_mut(slice: &mut [u32]) -> &mut [u8] {

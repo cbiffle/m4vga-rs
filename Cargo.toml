@@ -13,6 +13,9 @@ measurement = []
 # Moves the 10x16 font into RAM by default, which may improve performance of
 # text rendering.
 ram-font = []
+# Specific to tunnel demo
+no-shading = []
+alt-texture = []
 
 [dependencies]
 cortex-m = "0.5.8"
