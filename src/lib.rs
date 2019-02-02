@@ -8,7 +8,7 @@ pub mod font_10x16;
 pub mod measurement;
 
 mod startup;
-
+pub mod math;
 
 mod hstate;
 mod bg_rast;
