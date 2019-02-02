@@ -183,12 +183,12 @@ fn render(table: &table::Table,
                     // the angle value.
                     let a1 = -v.angle + table::TEX_PERIOD_A as f32 + a;
                     let p1 = color(v.distance, a1, v.distance + z);
-                    fb[inv_sy * WIDTH + (WIDTH/2 - 1 - sx)] = p1;
+                    fb[inv_sy * WIDTH + (WIDTH/2 - 1 - sx)] = p1 as u8;
 
                     // Quadrant I (upper-right): use the angle value as written.
                     let a2 = v.angle + a;
                     let p2 = color(v.distance, a2, v.distance + z);
-                    fb[inv_sy * WIDTH + sx + WIDTH/2] = p2;
+                    fb[inv_sy * WIDTH + sx + WIDTH/2] = p2 as u8;
 
                     // Quadrants III/IV, of course, are handled through
                     // rasterization tricks, and not computed here.
@@ -220,20 +220,24 @@ fn render(table: &table::Table,
     }
 }
 
-fn color(distance: f32, fd: f32, fa: f32) -> u8 {
+fn color(distance: f32, fd: f32, fa: f32) -> u32 {
     shade(distance, tex_fetch(fd, fa))
 }
 
-fn shade(distance: f32, pixel: u8) -> u8 {
+fn shade(distance: f32, pixel: u32) -> u32 {
     let sel = (distance / (table::TEX_REPEAT_D * 2) as f32) as u32;
-    let sel = sel.min(7).max(0);  // sure hope this generates USAT
-    let r = (pixel as u32 >> ((0x01010000_u32 >> (sel * 8)) & 0xFF))
-        & (0x5555AAFF_u32 >> (sel * 8));
-    r as u8
+    if sel < 4 {
+        // sel is 0..4
+        let sel = sel * 8; // sel is 0..32, shifts should not be UB
+        (pixel >> (0x01010000_u32 >> sel))
+            & (0x5555AAFF_u32 >> sel)
+    } else {
+        0
+    }
 }
 
-fn tex_fetch(x: f32, y: f32) -> u8 {
-    (x as u32 ^ y as u32) as u8
+fn tex_fetch(x: f32, y: f32) -> u32 {
+    x as u32 ^ y as u32
 }
 
 fn u32_as_u8_mut(slice: &mut [u32]) -> &mut [u8] {
