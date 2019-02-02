@@ -1,6 +1,7 @@
 //! Rasterizer support.
 
 pub mod bitmap_1;
+pub mod direct;
 pub mod text_10x16;
 
 use core::sync::atomic::{Ordering, AtomicUsize, AtomicBool};

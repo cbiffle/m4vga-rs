@@ -13,6 +13,7 @@ mod table;
 use stm32f4;
 use stm32f4::stm32f407::interrupt;
 use m4vga::util::spin_lock::SpinLock;
+use m4vga::rast::direct;
 use table::Entry;
 
 const NATIVE_WIDTH: usize = 800;
@@ -64,26 +65,27 @@ fn main() -> ! {
                     );
                     return
                 }
-
-                let coarse_ln = ln / SCALE;
                 let buf = fg.try_lock().expect("rast fg access");
-                if coarse_ln < HALF_HEIGHT {
-                    let offset = coarse_ln * BUFFER_STRIDE;
-                    m4vga::util::copy_words::copy_words(
-                        &buf[offset .. offset + BUFFER_STRIDE],
-                        &mut tgt.as_words_mut()[..BUFFER_STRIDE],
+
+                let ln = ln / SCALE;
+                if ln < HALF_HEIGHT {
+                    direct::direct_color(
+                        ln,
+                        tgt,
+                        ctx,
+                        *buf,
+                        BUFFER_STRIDE,
                     );
                 } else {
-                    let coarse_ln = HEIGHT - coarse_ln - 1;
-                    let offset = coarse_ln * BUFFER_STRIDE;
-                    let tgt = tgt.as_words_mut()[..BUFFER_STRIDE].iter_mut();
-                    let src_rev = buf[offset .. offset + BUFFER_STRIDE].iter()
-                        .rev();
-                    for (dst, src) in tgt.zip(src_rev) {
-                        *dst = src.swap_bytes()
-                    }
+                    direct::direct_color_mirror(
+                        ln,
+                        tgt,
+                        ctx,
+                        *buf,
+                        BUFFER_STRIDE,
+                        HEIGHT,
+                    );
                 };
-                ctx.target_range = 0..WIDTH;
                 ctx.cycles_per_pixel *= SCALE;
                 ctx.repeat_lines = SCALE - 1;
             },
