@@ -377,13 +377,13 @@ fn rasterize_next_line(cycles_per_pixel: usize,
             repeat_lines: 0,
             target_range: 0..0,
         };
-        // Invoke the rasterizer.
-        RASTER.observe(|r| r(
+        // Invoke the rasterizer. Ignore errors if it's not there yet.
+        let _ = RASTER.observe(|r| r(
                 visible_line,
                 working_buffer_as_u8(working),
                 ctx,
                 priority,
-        )).expect("raster observe");
+        ));
         true
     } else {  // repeat_lines > 0
         ctx.repeat_lines -= 1;
