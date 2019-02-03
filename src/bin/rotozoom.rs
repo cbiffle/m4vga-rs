@@ -17,9 +17,10 @@ use m4vga::math::{Mat3f, Vec2};
 
 use libm::F32Ext;
 
-const SCALE: usize = 4;
-const WIDTH: usize = 800 / SCALE;
-const HEIGHT: usize = 600 / SCALE;
+const X_SCALE: usize = 3;
+const Y_SCALE: usize = 3;
+const WIDTH: usize = 792 / X_SCALE;
+const HEIGHT: usize = 600 / Y_SCALE;
 
 const BUFFER_SIZE: usize = WIDTH * HEIGHT;
 const BUFFER_WORDS: usize = BUFFER_SIZE / 4;
@@ -47,7 +48,7 @@ fn main() -> ! {
             // provide new pixels. Here, we just scribble a test pattern into
             // the target buffer.
             |ln, tgt, ctx| {
-                let ln = ln / SCALE;
+                let ln = ln / Y_SCALE;
                 let buf = fg.try_lock().expect("rast fg access");
                 direct::direct_color(
                     ln,
@@ -57,8 +58,8 @@ fn main() -> ! {
                     BUFFER_STRIDE,
                 );
                 ctx.target_range = 0..WIDTH;
-                ctx.cycles_per_pixel *= SCALE;
-                ctx.repeat_lines = SCALE - 1;
+                ctx.cycles_per_pixel *= X_SCALE;
+                ctx.repeat_lines = Y_SCALE - 1;
             },
             // This closure contains the main loop of the program.
             |vga| {
@@ -80,8 +81,8 @@ fn main() -> ! {
 
                     m4vga::measurement::sig_d_set();
 
-                    let s = (frame as f32 / 63. + 1.3).sin() + 1.5;
-                    let tx = (frame as f32 / 59.).cos() * 50.;
+                    let s = (frame as f32 / 63.).sin() + 1.3;
+                    let tx = frame as f32 / 10.;
                     let ty = (frame as f32 / 50.).sin() * 50.;
 
                     let m_ = m * Mat3f::translate(tx, ty) * Mat3f::scale(s, s);
