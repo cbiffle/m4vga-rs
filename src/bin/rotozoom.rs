@@ -79,6 +79,8 @@ fn main() -> ! {
                                     &mut *fg.try_lock().expect("swap access"));
                     let bg = u32_as_u8_mut(bg);
 
+                    m4vga::measurement::sig_d_set();
+
                     let s = (frame as f32 / 63. + 1.3).sin() + 1.5;
                     let tx = (frame as f32 / 59.).cos() * 50.;
                     let ty = (frame as f32 / 50.).sin() * 50.;
@@ -110,6 +112,8 @@ fn main() -> ! {
                     m = m * Mat3f::rotate(rc, rs);
 
                     frame += 1;
+
+                    m4vga::measurement::sig_d_clear();
                 }
             })
 }
