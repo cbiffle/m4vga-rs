@@ -19,7 +19,7 @@ use libm::F32Ext;
 
 const X_SCALE: usize = 2;
 const Y_SCALE: usize = 2;
-const WIDTH: usize = 792 / X_SCALE;
+const WIDTH: usize = 800 / X_SCALE;
 const HEIGHT: usize = 600 / Y_SCALE;
 const HALF_HEIGHT: usize = HEIGHT / 2;
 
