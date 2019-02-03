@@ -60,8 +60,11 @@ fn main() -> ! {
             // The raster callback is invoked on every horizontal retrace to
             // provide new pixels. Here, we just scribble a test pattern into
             // the target buffer.
+            #[link_section = ".ramcode"]
             |_, tgt, ctx, _| {
                 let buf = reader.take_line();
+                ctx.cycles_per_pixel *= X_SCALE;
+                ctx.repeat_lines = Y_SCALE - 1;
                 direct::direct_color(
                     0,
                     tgt,
@@ -69,9 +72,6 @@ fn main() -> ! {
                     buf,
                     BUFFER_STRIDE,
                 );
-                ctx.target_range = 0..WIDTH;
-                ctx.cycles_per_pixel *= X_SCALE;
-                ctx.repeat_lines = Y_SCALE - 1;
             },
             // This closure contains the main loop of the program.
             |vga| {
