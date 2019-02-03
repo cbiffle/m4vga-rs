@@ -141,6 +141,7 @@ fn TIM3() {
 
 /// Wires up the TIM4 handler expected by the driver.
 #[interrupt]
+#[link_section = ".ramcode"]
 fn TIM4() {
     m4vga::tim4_horiz_isr()
 }
