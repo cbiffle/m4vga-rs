@@ -13,7 +13,7 @@ use stm32f4::stm32f407::interrupt;
 
 use m4vga::rast::direct;
 use m4vga::util::spin_lock::SpinLock;
-use m4vga::math::{Mat3f, Vec2, lerp};
+use m4vga::math::{Mat3f, Vec2};
 
 use libm::F32Ext;
 
@@ -86,22 +86,26 @@ fn main() -> ! {
 
                     let m_ = m * Mat3f::translate(tx, ty) * Mat3f::scale(s, s);
 
-                    let vertices = [
-                        (m_ * Vec2([-cols/2., -rows/2.]).augment()).project(),
-                        (m_ * Vec2([ cols/2., -rows/2.]).augment()).project(),
-                        (m_ * Vec2([-cols/2.,  rows/2.]).augment()).project(),
-                    ];
+                    let top_left = 
+                        (m_ * Vec2([-cols/2., -rows/2.]).augment()).project();
+                    let top_right =
+                        (m_ * Vec2([ cols/2., -rows/2.]).augment()).project();
+                    let bot_left =
+                        (m_ * Vec2([-cols/2.,  rows/2.]).augment()).project();
 
-                    let xi = (vertices[1] - vertices[0]) * (1. / cols);
-
+                    let xi = (top_right - top_left) * (1. / cols);
+                    let yi = (bot_left - top_left) * (1. / rows);
+                    let mut ybase = top_left;
                     for y in 0..HEIGHT {
-                        let yr = y as f32 / rows;
-                        let mut pos = lerp(vertices[0], vertices[2], yr);
-                        for x in 0..WIDTH {
-                            bg[y * WIDTH + x] =
-                                tex_fetch(pos.0[0], pos.0[1]) as u8;
-                            pos = pos + xi;
+                        {
+                            let mut pos = ybase;
+                            for x in 0..WIDTH {
+                                bg[y * WIDTH + x] =
+                                    tex_fetch(pos.0[0], pos.0[1]) as u8;
+                                pos = pos + xi;
+                            }
                         }
+                        ybase = ybase + yi
                     }
 
                     m = m * rot;
