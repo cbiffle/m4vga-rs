@@ -17,26 +17,27 @@ use m4vga::math::{Mat3f, Vec2};
 
 use libm::F32Ext;
 
-const X_SCALE: usize = 3;
-const Y_SCALE: usize = 3;
+const X_SCALE: usize = 2;
+const Y_SCALE: usize = 2;
 const WIDTH: usize = 792 / X_SCALE;
 const HEIGHT: usize = 600 / Y_SCALE;
+const HALF_HEIGHT: usize = HEIGHT / 2;
 
-const BUFFER_SIZE: usize = WIDTH * HEIGHT;
+const BUFFER_SIZE: usize = WIDTH * HALF_HEIGHT;
 const BUFFER_WORDS: usize = BUFFER_SIZE / 4;
 const BUFFER_STRIDE: usize = WIDTH / 4;
 
-static mut BUF0: [u32; BUFFER_WORDS] = [0; BUFFER_WORDS];
+static mut TOP: [u32; BUFFER_WORDS] = [0; BUFFER_WORDS];
 #[link_section = ".local_ram"]
-static mut BUF1: [u32; BUFFER_WORDS] = [0; BUFFER_WORDS];
+static mut BOT: [u32; BUFFER_WORDS] = [0; BUFFER_WORDS];
 
 /// Demo entry point. Responsible for starting up the display driver and
 /// providing callbacks.
 #[allow(unused_parens)] // TODO bug in cortex_m_rt
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    let fg = SpinLock::new(unsafe { &mut BUF0 });
-    let mut bg = unsafe { &mut BUF1 };
+    let top = SpinLock::new(unsafe { &mut TOP });
+    let bot = SpinLock::new(unsafe { &mut BOT });
 
     // Give the driver its hardware resources...
     m4vga::take_hardware()
@@ -49,12 +50,16 @@ fn main() -> ! {
             // the target buffer.
             |ln, tgt, ctx| {
                 let ln = ln / Y_SCALE;
-                let buf = fg.try_lock().expect("rast fg access");
+                let (buf, ln) = if ln < HALF_HEIGHT {
+                    (unsafe { &mut TOP }, ln)
+                } else {
+                    (unsafe { &mut BOT }, ln - HALF_HEIGHT)
+                };
                 direct::direct_color(
                     ln,
                     tgt,
                     ctx,
-                    *buf,
+                    buf,
                     BUFFER_STRIDE,
                 );
                 ctx.target_range = 0..WIDTH;
@@ -75,10 +80,6 @@ fn main() -> ! {
 
                 loop {
                     vga.sync_to_vblank();
-                    core::mem::swap(&mut bg,
-                                    &mut *fg.try_lock().expect("swap access"));
-                    let bg = u32_as_u8_mut(bg);
-
                     m4vga::measurement::sig_d_set();
 
                     let s = (frame as f32 / 63.).sin() + 1.3;
@@ -97,7 +98,9 @@ fn main() -> ! {
                     let xi = (top_right - top_left) * (1. / cols);
                     let yi = (bot_left - top_left) * (1. / rows);
                     let mut ybase = top_left;
-                    for y in 0..HEIGHT {
+                    let mut buf = top.try_lock().expect("render access");
+                    let bg = u32_as_u8_mut(&mut **buf);
+                    for y in 0..HALF_HEIGHT {
                         {
                             let mut pos = ybase;
                             for x in 0..WIDTH {
@@ -108,7 +111,22 @@ fn main() -> ! {
                         }
                         ybase = ybase + yi
                     }
+                    drop(bg); drop(buf);
 
+                    let mut buf = bot.try_lock().expect("render access");
+                    let bg = u32_as_u8_mut(&mut **buf);
+                    for y in 0..HALF_HEIGHT {
+                        {
+                            let mut pos = ybase;
+                            for x in 0..WIDTH {
+                                bg[y * WIDTH + x] =
+                                    tex_fetch(pos.0[0], pos.0[1]) as u8;
+                                pos = pos + xi;
+                            }
+                        }
+                        ybase = ybase + yi
+                    }
+                    drop(bg); drop(buf);
                     m = m * rot;
 
                     frame += 1;
