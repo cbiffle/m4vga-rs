@@ -76,15 +76,17 @@ fn main() -> ! {
 
                 vga.video_on();
 
-                let rot = Mat3f::rotate(0.01);
+                const ROT: f32 = 0.005;
+
+                let rot = Mat3f::rotate(ROT);
 
                 loop {
                     vga.sync_to_vblank();
                     m4vga::measurement::sig_d_set();
 
-                    let s = (frame as f32 / 63.).sin() + 1.3;
-                    let tx = frame as f32 / 10.;
-                    let ty = (frame as f32 / 50.).sin() * 50.;
+                    let s = (frame as f32 / 50.).sin() * 0.7 + 1.;
+                    let tx = (frame as f32 / 100.).cos() * 100.;
+                    let ty = 0.;
 
                     let m_ = m * Mat3f::translate(tx, ty) * Mat3f::scale(s, s);
 
