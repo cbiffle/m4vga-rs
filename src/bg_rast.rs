@@ -46,7 +46,7 @@ static mut RASTER_STATE: SpinLock<RasterState> = SpinLock::new(RasterState {
         ///
         /// This is defined here as proof that we don't touch it elsewhere,
         /// except through the reference we're recording.
-        #[link_section = ".local_ram"]
+        #[link_section = ".local_bss"]
         static mut GLOBAL_WORKING_BUFFER: WorkingBuffer =
             [0; WORKING_BUFFER_SIZE];
         &mut GLOBAL_WORKING_BUFFER
@@ -70,7 +70,7 @@ static mut RASTER_STATE: SpinLock<RasterState> = SpinLock::new(RasterState {
 /// TODO: I would very much like to model this as a ReadWriteLock, with the DMA
 /// holding the read lock until it completes -- but there's some plumbing I need
 /// to do first.
-#[link_section = ".scanout_ram"]
+#[link_section = ".scanout_bss"]
 static mut GLOBAL_SCANOUT_BUFFER: WorkingBuffer = [0; WORKING_BUFFER_SIZE];
 
 /// Raster ISR: call this from `PendSV`.

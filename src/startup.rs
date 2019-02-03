@@ -6,6 +6,13 @@ use stm32f4::stm32f407 as device;
 
 extern "C" {
     static __vector_table_in_flash: u8;
+    static mut _local_data_start: u32;
+    static mut _local_data_end: u32;
+    static _local_data_init: u32;
+    static mut _local_bss_start: u32;
+    static mut _local_bss_end: u32;
+    static mut _sram16_bss_start: u32;
+    static mut _sram16_bss_end: u32;
 }
 
 #[pre_init]
@@ -66,4 +73,14 @@ unsafe fn pre_init() {
     // Turn SYSCFG back off for good measure.
     (*device::RCC::ptr())
         .apb2enr.modify(|_, w| w.syscfgen().disabled());
+
+    // Primary data and bss are uninitialized, but will be initialized shortly.
+    // Initialize our discontiguous regions.
+    r0::zero_bss(&mut _local_bss_start, &mut _local_bss_end);
+    r0::zero_bss(&mut _sram16_bss_start, &mut _sram16_bss_end);
+    r0::init_data(
+        &mut _local_data_start,
+        &mut _local_data_end,
+        &_local_data_init,
+    );
 }

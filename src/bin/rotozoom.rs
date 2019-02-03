@@ -28,7 +28,7 @@ const BUFFER_WORDS: usize = BUFFER_SIZE / 4;
 const BUFFER_STRIDE: usize = WIDTH / 4;
 
 static mut TOP: [u32; BUFFER_WORDS] = [0; BUFFER_WORDS];
-#[link_section = ".local_ram"]
+#[link_section = ".local_bss"]
 static mut BOT: [u32; BUFFER_WORDS] = [0; BUFFER_WORDS];
 
 /// Demo entry point. Responsible for starting up the display driver and

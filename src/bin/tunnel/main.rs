@@ -30,7 +30,7 @@ const BUFFER_WORDS: usize = BUFFER_SIZE / 4;
 const BUFFER_STRIDE: usize = WIDTH / 4;
 
 static mut BUF0: [u32; BUFFER_WORDS] = [0; BUFFER_WORDS];
-#[link_section = ".local_ram"]
+#[link_section = ".local_bss"]
 static mut BUF1: [u32; BUFFER_WORDS] = [0; BUFFER_WORDS];
 #[no_mangle]
 static mut TABLE: table::Table =

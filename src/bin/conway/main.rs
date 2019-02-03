@@ -20,7 +20,7 @@ use m4vga::util::rw_lock::ReadWriteLock;
 // this can go in the default SRAM
 static mut BUF0: [u32; 800 * 600 / 32] = [0; 800*600/32];
 // this needs to get placed because they won't both fit
-#[link_section = ".local_ram"]
+#[link_section = ".local_bss"]
 static mut BUF1: [u32; 800 * 600 / 32] = [0; 800*600/32];
 
 /// Demo entry point. Responsible for starting up the display driver and
