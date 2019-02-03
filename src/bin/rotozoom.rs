@@ -70,8 +70,7 @@ fn main() -> ! {
 
                 vga.video_on();
 
-                let rs = 0.01.sin();
-                let rc = 0.01.cos();
+                let rot = Mat3f::rotate(0.01);
 
                 loop {
                     vga.sync_to_vblank();
@@ -85,16 +84,12 @@ fn main() -> ! {
                     let tx = (frame as f32 / 59.).cos() * 50.;
                     let ty = (frame as f32 / 50.).sin() * 50.;
 
-                    let scale = Mat3f::scale(s, s);
-                    let trans = Mat3f::translate(tx, ty);
-
-                    let m_ = m * trans * scale;
+                    let m_ = m * Mat3f::translate(tx, ty) * Mat3f::scale(s, s);
 
                     let vertices = [
                         (m_ * Vec2([-cols/2., -rows/2.]).augment()).project(),
                         (m_ * Vec2([ cols/2., -rows/2.]).augment()).project(),
                         (m_ * Vec2([-cols/2.,  rows/2.]).augment()).project(),
-                        (m_ * Vec2([ cols/2.,  rows/2.]).augment()).project(),
                     ];
 
                     let xi = (vertices[1] - vertices[0]) * (1. / cols);
@@ -109,7 +104,7 @@ fn main() -> ! {
                         }
                     }
 
-                    m = m * Mat3f::rotate(rc, rs);
+                    m = m * rot;
 
                     frame += 1;
 

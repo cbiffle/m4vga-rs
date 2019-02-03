@@ -8,10 +8,6 @@ pub struct Vec3<T>(pub [T; 3]);
 pub type Vec3f = Vec3<f32>;
 
 impl<T> Vec3<T> {
-    pub fn new(a: T, b: T, c: T) -> Self {
-        Vec3([a, b, c])
-    }
-
     pub fn project(self) -> Vec2<T>
         where T: Clone + core::ops::Div<Output = T>
     {
@@ -23,22 +19,6 @@ impl<T> Vec3<T> {
 trait Vector {
     type Element;
     fn dot(self, other: Self) -> Self::Element;
-}
-
-impl<T> core::iter::Sum for Vec3<T>
-    where T: Default + core::ops::AddAssign
-{
-    fn sum<I>(iter: I) -> Self
-        where I: core::iter::Iterator<Item = Self>,
-    {
-        let mut sum = Vec3::default();
-        for Vec3([a, b, c]) in iter {
-            sum.0[0] += a;
-            sum.0[1] += b;
-            sum.0[2] += c;
-        }
-        sum
-    }
 }
 
 impl<T> Vector for Vec3<T>
@@ -60,10 +40,6 @@ pub struct Vec2<T>(pub [T; 2]);
 pub type Vec2f = Vec2<f32>;
 
 impl<T> Vec2<T> {
-    pub fn new(a: T, b: T) -> Self {
-        Vec2([a, b])
-    }
-
     pub fn augment(self) -> Vec3<T>
         where T: One
     {
@@ -189,7 +165,7 @@ impl<T> Mat3<T> {
         ])
     }
 
-    pub fn rotate(cos: T, sin: T) -> Self
+    pub fn rotate_pre(sin: T, cos: T) -> Self
         where T: One + Zero + core::ops::Neg<Output = T> + Clone
     {
         Mat3([
@@ -208,6 +184,14 @@ impl<T> Mat3<T> {
              Vec3([x, y, one()]),
         ])
     }
+}
+
+impl Mat3<f32> {
+    pub fn rotate(a: f32) -> Self {
+        use libm::F32Ext;
+        Self::rotate_pre(a.clone().sin(), a.cos())
+    }
+
 }
 
 
