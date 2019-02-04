@@ -34,7 +34,7 @@ fn main() -> ! {
             // The raster callback is invoked on every horizontal retrace to
             // provide new pixels. Here, we just scribble a test pattern into
             // the target buffer.
-            |_, tgt, ctx| {
+            |_, tgt, ctx, _| {
                 let mut pixel = 0xFF;
                 for t in &mut tgt[0..800] {
                     *t = pixel;

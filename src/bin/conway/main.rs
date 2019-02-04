@@ -43,7 +43,7 @@ fn main() -> ! {
         .configure_timing(&m4vga::timing::SVGA_800_600)
         // ... and provide a raster callback.
         .with_raster(
-            |ln, tgt, ctx| {
+            |ln, tgt, ctx, _| {
                 m4vga::measurement::sig_d_set();
 
                 let fg = fg.try_lock().expect("fg unavail");

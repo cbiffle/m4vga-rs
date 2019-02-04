@@ -10,6 +10,7 @@ pub mod measurement;
 mod startup;
 pub mod math;
 
+pub mod priority;
 mod hstate;
 mod bg_rast;
 mod shock;
@@ -312,7 +313,8 @@ impl Vga<Sync> {
     pub fn with_raster<R>(&mut self,
                           mut rast: impl FnMut(usize,
                                                &mut TargetBuffer,
-                                               &mut RasterCtx)
+                                               &mut RasterCtx,
+                                               priority::I0)
                                          + Send,
                           scope: impl FnOnce(&mut Vga<Live>) -> R)
         -> R

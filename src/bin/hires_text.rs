@@ -120,7 +120,7 @@ fn main() -> ! {
         .with_raster(
             // The raster callback is invoked on every horizontal retrace to
             // provide new pixels.
-            |ln, tgt, ctx| {
+            |ln, tgt, ctx, _| {
                 if ln < 592 {
                     text_10x16::unpack(
                         &*TEXT_BUF.try_lock().expect("rast buf access"),

@@ -55,7 +55,7 @@ fn main() -> ! {
         .configure_timing(&m4vga::timing::SVGA_800_600)
         // ... and provide a raster callback.
         .with_raster(
-            |ln, tgt, ctx| {
+            |ln, tgt, ctx, _| {
                 if ln < 4 || ln > 595 {
                     m4vga::rast::solid_color_fill(
                         tgt,

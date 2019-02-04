@@ -7,7 +7,8 @@ pub mod text_10x16;
 use core::sync::atomic::{Ordering, AtomicUsize, AtomicBool};
 use core::cell::Cell;
 use scopeguard::defer;
-use super::Pixel;
+use crate::Pixel;
+use crate::priority;
 
 /// Number of pixels in the target buffers given to raster callbacks.
 pub const TARGET_BUFFER_SIZE: usize = super::MAX_PIXELS_PER_LINE + 32;
@@ -139,7 +140,8 @@ impl IRef {
                               val: &'env mut F,
                               scope: impl FnOnce() -> R)
         -> R
-    where F: FnMut(usize, &mut TargetBuffer, &mut RasterCtx) + Send + 'env,
+    where F: FnMut(usize, &mut TargetBuffer, &mut RasterCtx, priority::I0),
+          F: Send + 'env,
     {
         let r = self.state.compare_exchange(
             EMPTY,
@@ -151,7 +153,7 @@ impl IRef {
 
         // Construct a FnMut fat pointer to our closure, and then erase its
         // type.
-        let val: &mut (dyn FnMut(_, _, _) + Send + 'env) = val;
+        let val: &mut (dyn FnMut(_, _, _, _) + Send + 'env) = val;
         // Safety: we only reinterpret these bits as the same type used above
         // but with *narrower* lifetime.
         let val: (usize, usize) = unsafe { core::mem::transmute(val) };
@@ -196,12 +198,13 @@ impl IRef {
     ///
     /// This operation will never busy-wait (unless, of course, `body` contains
     /// code that will busy-wait).
-    pub fn observe<R, F>(&self,
-                         body: F)
+    pub(crate) fn observe<R, F>(&self,
+                                body: F)
         -> Option<R>
     where F: FnOnce(&mut (dyn FnMut(usize,
                                     &mut TargetBuffer,
-                                    &mut RasterCtx) + Send))
+                                    &mut RasterCtx,
+                                    priority::I0) + Send))
              -> R
     {
         self.state
@@ -227,7 +230,7 @@ impl IRef {
                     let r = self.contents.get();
                     // We do *not* know the correct lifetime for the &mut.  This
                     // is why the `body` closure is (implicitly) `for<'a>`.
-                    let r: &mut (dyn FnMut(_, &mut _, &mut _)
+                    let r: &mut (dyn FnMut(_, &mut _, &mut _, _)
                                  + Send) =
                         // Safety: we put it in there, we have used locking to
                         // ensure that our reference will be unique, and the

@@ -53,7 +53,7 @@ fn main() -> ! {
 
     // Now we'll start drawing and share state between the ISRs and thread.
     vga.with_raster(
-        |line, tgt, ctx| {
+        |line, tgt, ctx, _| {
             let f = frame.load(Ordering::Relaxed);
             xor_pattern(
                 (line >> 2) + f, // >>2 because the pattern is upscaled 4x

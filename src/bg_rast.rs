@@ -9,6 +9,7 @@ use crate::util::spin_lock::SpinLock;
 use crate::{vert_state, acquire_hw, HPSHARE, NextTransfer, TIMING, LINE, RASTER};
 use crate::timing::{Timing, MIN_CYCLES_PER_PIXEL};
 use crate::rast::{RasterCtx, TargetBuffer};
+use crate::priority;
 
 /// Equivalent of `rast::TargetBuffer`, but as words to ensure alignment for
 /// certain of our high-throughput routines.
@@ -365,6 +366,11 @@ fn rasterize_next_line(cycles_per_pixel: usize,
     let visible_line = next_line - video_start_line;
 
     if ctx.repeat_lines == 0 {
+        // Safety: this can be incorrect if the application has invoked our ISR
+        // from the wrong interrupt. If that happens...well, we're already
+        // hosed.
+        let priority = unsafe { priority::I0::new() };
+
         // Set up a default context for the rasterizer to alter if desired.
         *ctx = RasterCtx {
             cycles_per_pixel,
@@ -376,6 +382,7 @@ fn rasterize_next_line(cycles_per_pixel: usize,
                 visible_line,
                 working_buffer_as_u8(working),
                 ctx,
+                priority,
         )).expect("raster observe");
         true
     } else {  // repeat_lines > 0
