@@ -5,3 +5,4 @@ pub mod stm32;
 pub mod copy_words;
 pub mod spin_lock;
 pub mod rw_lock;
+pub mod race_buf;
