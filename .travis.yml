@@ -1,0 +1,12 @@
+language: rust
+rust:
+  - stable
+  - beta
+  - nightly
+matrix:
+  allow_failures:
+    - rust: nightly
+  fast_finish: true
+before_script:
+  - rustup target add thumbv7em-none-eabihf
+  - sudo apt-get install gcc-arm-none-eabi
