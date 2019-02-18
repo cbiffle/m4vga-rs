@@ -74,6 +74,11 @@ test = false
 bench = false
 
 [[bin]]
+name = "rotozoom"
+test = false
+bench = false
+
+[[bin]]
 name = "tunnel"
 test = false
 bench = false
