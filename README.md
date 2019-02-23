@@ -2,6 +2,8 @@
 
 [![Build Status](https://travis-ci.org/cbiffle/m4vga-rs.svg?branch=master)](https://travis-ci.org/cbiffle/m4vga-rs)
 
+![Recording of the tunnel demo on a small monitor](doc/tunnel.gif)
+
 The `m4vga` crate provides SuperVGA-quality 60fps graphics from the STM32F407
 microcontroller. The observant reader will note that the STM32F407 has no video
 hardware, so how does `m4vga` get video out of it?
