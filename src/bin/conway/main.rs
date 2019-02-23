@@ -35,6 +35,14 @@ fn main() -> ! {
     // buffer. Safe so long as we don't do it again.
     let mut bg = unsafe { &mut BUF1 };
 
+    {
+        use rand::{Rng, SeedableRng};
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(11181981);
+        for word in bg.iter_mut() {
+            *word = rng.gen();
+        }
+    }
+
     let clut = AtomicUsize::new(0xFF00);
 
     // Give the driver its hardware resources...

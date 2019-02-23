@@ -28,6 +28,7 @@ num-traits = {version = "0.2.6", default-features = false}
 r0 = "0.2.2"
 #stm32f4xx-hal = "0.2.4"
 #stm32f407g-disc = "0.1.2"
+rand = {version = "0.6", default-features = false}
 
 [dependencies.scopeguard]
 default-features = false
