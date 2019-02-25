@@ -5,6 +5,9 @@ readme = "README.md"
 name = "m4vga"
 version = "0.1.0"
 
+[workspace]
+members = ["gfx"]
+
 [features]
 default = ["panic-itm"]
 # Generates diagnostic waveforms showing interrupt entry/exit, etc., using free
@@ -29,6 +32,7 @@ r0 = "0.2.2"
 #stm32f4xx-hal = "0.2.4"
 #stm32f407g-disc = "0.1.2"
 rand = {version = "0.6", default-features = false}
+gfx = {path = "gfx"}
 
 [dependencies.scopeguard]
 default-features = false
