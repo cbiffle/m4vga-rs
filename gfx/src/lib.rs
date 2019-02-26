@@ -5,6 +5,8 @@
 
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
+pub mod bit;
+
 use core::mem::swap;
 
 #[derive(Debug)]
