@@ -11,3 +11,7 @@ matrix:
 before_script:
   - rustup target add thumbv7em-none-eabihf
   - sudo apt-get install gcc-arm-none-eabi
+script:
+  - cargo build --verbose
+  - cargo test
+  - cargo test -p gfx --target=x86_64-unknown-linux-gnu
