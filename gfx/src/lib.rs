@@ -7,6 +7,7 @@
 
 pub mod bit;
 
+use bit::BandBit;
 use core::mem::swap;
 
 #[derive(Debug)]
@@ -27,7 +28,7 @@ pub(crate) enum Direction {
 /// pixel in the line. All addresses along the line between the two points must
 /// be in the bounds of the mutable buffer we're writing into.
 pub(crate) unsafe fn draw_line_unclipped_unchecked(
-    mut out: *mut u32,
+    mut out: *mut BandBit,
     dx: usize,
     dy: usize,
     d: Direction,
@@ -54,7 +55,7 @@ pub(crate) unsafe fn draw_line_unclipped_unchecked(
         eprintln!("minor_step: {}", minor_step);
     }
 
-    *out = 1;
+    *out = BandBit::from(true);
 
     for _ in 0..dmajor {
         if error >= 0 {
@@ -65,7 +66,7 @@ pub(crate) unsafe fn draw_line_unclipped_unchecked(
         out = out.offset(major_step as isize);
         #[cfg(test)]
         eprintln!("{:p}", out);
-        *out = 1;
+        *out = BandBit::from(true);
     }
 }
 
@@ -85,7 +86,7 @@ pub(crate) fn draw_line_unclipped(
     mut y0: usize,
     mut x1: usize,
     mut y1: usize,
-    buf: &mut [u32],
+    buf: &mut [BandBit],
     stride: usize,
 ) {
     // Flip things as necessary to ensure that we draw horizontal or
@@ -107,7 +108,6 @@ pub(crate) fn draw_line_unclipped(
             && compute_offset(x1, y1, stride) < buf.len()
     );
 
-
     let dx = x1 as isize - x0 as isize; // may be negative
     let dy = y1 - y0; // nonnegative
 
@@ -124,29 +124,43 @@ pub(crate) fn draw_line_unclipped(
         Direction::Vertical
     };
 
-    unsafe {
-        draw_line_unclipped_unchecked(out, dx, dy, dir, stride, x_adv)
-    }
+    unsafe { draw_line_unclipped_unchecked(out, dx, dy, dir, stride, x_adv) }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn check_line(buf: &[u32], stride: usize, pred: fn(usize, usize) -> bool) {
+    fn check_line(
+        buf: &[BandBit],
+        stride: usize,
+        pred: fn(usize, usize) -> bool,
+    ) {
         for (i, p) in buf.iter().enumerate() {
             let (x, y) = (i % stride, i / stride);
             if pred(x, y) {
-                assert_eq!(*p, 1, "Pixel at ({}, {}) should be set", x, y);
+                assert_eq!(
+                    bool::from(*p),
+                    true,
+                    "Pixel at ({}, {}) should be set",
+                    x,
+                    y
+                );
             } else {
-                assert_eq!(*p, 0, "Pixel at ({}, {}) should not be set", x, y);
+                assert_eq!(
+                    bool::from(*p),
+                    false,
+                    "Pixel at ({}, {}) should not be set",
+                    x,
+                    y
+                );
             }
         }
     }
 
     #[test]
     fn zero_length() {
-        let mut buf = [0; 1];
+        let mut buf = [BandBit::from(false); 1];
         // stride shouldn't be used, pass something big:
         draw_line_unclipped(0, 0, 0, 0, &mut buf, 100);
         // A zero-length line should still set one pixel.
@@ -156,7 +170,7 @@ mod tests {
     #[test]
     fn horizontal_full() {
         // Buffer on the stack to make corruption *slightly* more obvious.
-        let mut buf = [0; 100 * 100];
+        let mut buf = [BandBit::from(false); 100 * 100];
         // Should not crash:
         draw_line_unclipped(0, 0, 99, 0, &mut buf, 100);
         check_line(&buf, 100, |_, y| y == 0);
@@ -165,7 +179,7 @@ mod tests {
     #[test]
     fn vertical_full() {
         // Buffer on the stack to make corruption *slightly* more obvious.
-        let mut buf = [0; 100 * 100];
+        let mut buf = [BandBit::from(false); 100 * 100];
         // Should not crash:
         draw_line_unclipped(0, 0, 0, 99, &mut buf, 100);
         check_line(&buf, 100, |x, _| x == 0);
@@ -174,7 +188,7 @@ mod tests {
     #[test]
     fn diagonal_full() {
         // Buffer on the stack to make corruption *slightly* more obvious.
-        let mut buf = [0; 100 * 100];
+        let mut buf = [BandBit::from(false); 100 * 100];
         // Should not crash:
         draw_line_unclipped(0, 0, 99, 99, &mut buf, 100);
         check_line(&buf, 100, |x, y| x == y);
@@ -184,14 +198,14 @@ mod tests {
     fn zero_length_out_x() {
         // The _unclipped function does not check that your use of coordinates
         // is sane, only that they are in-bounds.
-        let mut buf = [0; 10*10];
+        let mut buf = [BandBit::from(false); 10 * 10];
         draw_line_unclipped(10, 0, 10, 0, &mut buf, 10);
     }
 
     #[test]
     #[should_panic]
     fn zero_length_out_y() {
-        let mut buf = [0; 10*10];
+        let mut buf = [BandBit::from(false); 10 * 10];
         draw_line_unclipped(0, 10, 0, 10, &mut buf, 10);
     }
 }
