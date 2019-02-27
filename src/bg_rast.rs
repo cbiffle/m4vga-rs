@@ -5,11 +5,13 @@ use stm32f4::stm32f407 as device;
 
 use core::sync::atomic::Ordering;
 
-use crate::util::spin_lock::SpinLock;
-use crate::{vert_state, acquire_hw, HPSHARE, NextTransfer, TIMING, LINE, RASTER};
-use crate::timing::{Timing, MIN_CYCLES_PER_PIXEL};
-use crate::rast::{RasterCtx, TargetBuffer};
 use crate::priority;
+use crate::rast::{RasterCtx, TargetBuffer};
+use crate::timing::{Timing, MIN_CYCLES_PER_PIXEL};
+use crate::util::spin_lock::SpinLock;
+use crate::{
+    acquire_hw, vert_state, NextTransfer, HPSHARE, LINE, RASTER, TIMING,
+};
 
 /// Equivalent of `rast::TargetBuffer`, but as words to ensure alignment for
 /// certain of our high-throughput routines.
@@ -109,7 +111,7 @@ pub fn maintain_raster_isr() {
             // in this section does not depend on any user choices -- not on the
             // rasterizer, line length, etc. So it stays pretty reliable.
 
-            crate::measurement::sig_b_set();  // signal critical section entry
+            crate::measurement::sig_b_set(); // signal critical section entry
 
             let mut share = acquire_hw(&HPSHARE); // ENTRY
 
@@ -123,12 +125,9 @@ pub fn maintain_raster_isr() {
             );
 
             // Record transfer parameters where SAV can find them.
-            share.xfer = NextTransfer {
-                dma_cr,
-                use_timer,
-            };
+            share.xfer = NextTransfer { dma_cr, use_timer };
 
-            crate::measurement::sig_b_clear();  // signal critical section exit
+            crate::measurement::sig_b_clear(); // signal critical section exit
         }
 
         // HState can fire now
@@ -138,7 +137,7 @@ pub fn maintain_raster_isr() {
         if state.update_scan_buffer {
             update_scan_buffer(
                 state.raster_ctx.target_range.end,
-                &mut state.working_buffer, 
+                &mut state.working_buffer,
             );
         }
     }
@@ -151,7 +150,7 @@ pub fn maintain_raster_isr() {
     // As a result, we just stash our results in places where the *next* PendSV
     // will find and apply them.
     if vs.is_rendered_state() {
-        crate::measurement::sig_b_set();  // signal rasterizer entry
+        crate::measurement::sig_b_set(); // signal rasterizer entry
 
         // Smart pointers are great, but I can't borrow multiple paths from them
         // as I need to below, so...
@@ -160,8 +159,11 @@ pub fn maintain_raster_isr() {
         // Hold the TIMING lock for just long enough to copy some fields out.
         // At this point in the process we are racing SAV only. HState only uses
         // TIMING on EAV, so we should be safe.
-        let Timing { add_cycles_per_pixel, video_start_line, ..} =
-            *TIMING.try_lock().expect("pendsv timing").as_mut().unwrap();
+        let Timing {
+            add_cycles_per_pixel,
+            video_start_line,
+            ..
+        } = *TIMING.try_lock().expect("pendsv timing").as_mut().unwrap();
 
         // Run the rasterizer.
         state.update_scan_buffer = rasterize_next_line(
@@ -171,14 +173,13 @@ pub fn maintain_raster_isr() {
             &mut state.working_buffer,
         );
 
-        crate::measurement::sig_b_clear();  // signal rasterizer exit
+        crate::measurement::sig_b_clear(); // signal rasterizer exit
     }
 }
 
 /// Copy the first `len_bytes` of `working` into the global scanout buffer for
 /// DMA.
-fn update_scan_buffer(len_bytes: usize,
-                      working: &mut WorkingBuffer) {
+fn update_scan_buffer(len_bytes: usize, working: &mut WorkingBuffer) {
     // We're going to move words, so round up to find the number of words to
     // move.
     //
@@ -190,10 +191,7 @@ fn update_scan_buffer(len_bytes: usize,
     // tearing but nothing worse. We tolerate the potential for now.
     let scan = unsafe { &mut GLOBAL_SCANOUT_BUFFER };
 
-    crate::util::copy_words::copy_words(
-        &working[..count],
-        &mut scan[..count],
-        );
+    crate::util::copy_words::copy_words(&working[..count], &mut scan[..count]);
 
     // Terminate with a word of black, to ensure that outputs return to
     // black level for hblank.
@@ -208,11 +206,11 @@ fn update_scan_buffer(len_bytes: usize,
 /// scanout will use a timer-generated DRQ (`true`) or run at full speed
 /// (`false`).
 #[must_use = "scanout parameters are returned, not set globally"]
-fn prepare_for_scanout(dma: &device::DMA2,
-                       vtimer: &device::tim1::RegisterBlock,
-                       ctx: &RasterCtx)
-    -> (device::dma2::s5cr::W, bool)
-{
+fn prepare_for_scanout(
+    dma: &device::DMA2,
+    vtimer: &device::tim1::RegisterBlock,
+    ctx: &RasterCtx,
+) -> (device::dma2::s5cr::W, bool) {
     // Shut off the DMA stream for reconfiguration. This is a little
     // belt-and-suspenders.
     dma.s5cr.modify(|_, w| w.en().clear_bit());
@@ -244,12 +242,16 @@ fn prepare_for_scanout(dma: &device::DMA2,
     // [OX] can't do these alterations in the same line as the declaration
     // above, because they pass references around instead of W being a
     // simple value type, and it's thus treated as a temporary and freed.
-    xfer
-        .chsel().bits(6)
-        .pl().very_high()
-        .pburst().single()
-        .mburst().single()
-        .en().enabled();
+    xfer.chsel()
+        .bits(6)
+        .pl()
+        .very_high()
+        .pburst()
+        .single()
+        .mburst()
+        .single()
+        .en()
+        .enabled();
 
     let length = ctx.target_range.end - ctx.target_range.start;
 
@@ -274,7 +276,7 @@ fn prepare_for_scanout(dma: &device::DMA2,
 
         dma.s5par.write(|w| unsafe {
             // Okay, this is legitimately unsafe. ;-)
-            w.bits(0x40021015)  // High byte of GPIOE ODR (hack hack)
+            w.bits(0x40021015) // High byte of GPIOE ODR (hack hack)
         });
         // Safety: as written, this might race scanout buffer updates. This will
         // cause no more than tearing, so we tolerate it for now.
@@ -302,11 +304,15 @@ fn prepare_for_scanout(dma: &device::DMA2,
             }
         }
 
-        xfer.dir().memory_to_peripheral()
-            .minc().set_bit()
-            .psize().byte()
-            .pinc().clear_bit();
-       
+        xfer.dir()
+            .memory_to_peripheral()
+            .minc()
+            .set_bit()
+            .psize()
+            .byte()
+            .pinc()
+            .clear_bit();
+
         (xfer, true)
     } else {
         // Note that we're using memory as the peripheral side.
@@ -319,7 +325,7 @@ fn prepare_for_scanout(dma: &device::DMA2,
         });
         dma.s5m0ar.write(|w| unsafe {
             // Okay, this is legitimately unsafe. ;-)
-            w.bits(0x40021015)  // High byte of GPIOE ODR (hack hack)
+            w.bits(0x40021015) // High byte of GPIOE ODR (hack hack)
         });
 
         // The number of bytes read must exactly match the number of bytes
@@ -342,11 +348,14 @@ fn prepare_for_scanout(dma: &device::DMA2,
             }
         }
 
-        xfer
-            .dir().memory_to_memory()
-            .pinc().set_bit()
-            .msize().byte()
-            .minc().clear_bit();
+        xfer.dir()
+            .memory_to_memory()
+            .pinc()
+            .set_bit()
+            .msize()
+            .byte()
+            .minc()
+            .clear_bit();
 
         (xfer, false)
     }
@@ -355,12 +364,12 @@ fn prepare_for_scanout(dma: &device::DMA2,
 /// Run the rasterizer to generate the next line, if required. (If
 /// `ctx.repeat_lines` is set, it's simply decremented instead.)
 #[must_use = "the update flag is pretty important"]
-fn rasterize_next_line(cycles_per_pixel: usize,
-                       video_start_line: usize,
-                       ctx: &mut RasterCtx,
-                       working: &mut WorkingBuffer)
-    -> bool
-{
+fn rasterize_next_line(
+    cycles_per_pixel: usize,
+    video_start_line: usize,
+    ctx: &mut RasterCtx,
+    working: &mut WorkingBuffer,
+) -> bool {
     let current_line = LINE.load(Ordering::Relaxed);
     let next_line = current_line + 1;
     let visible_line = next_line - video_start_line;
@@ -378,14 +387,12 @@ fn rasterize_next_line(cycles_per_pixel: usize,
             target_range: 0..0,
         };
         // Invoke the rasterizer. Ignore errors if it's not there yet.
-        let _ = RASTER.observe(|r| r(
-                visible_line,
-                working_buffer_as_u8(working),
-                ctx,
-                priority,
-        ));
+        let _ = RASTER.observe(|r| {
+            r(visible_line, working_buffer_as_u8(working), ctx, priority)
+        });
         true
-    } else {  // repeat_lines > 0
+    } else {
+        // repeat_lines > 0
         ctx.repeat_lines -= 1;
         false
     }
@@ -396,7 +403,5 @@ fn working_buffer_as_u8(words: &mut WorkingBuffer) -> &mut TargetBuffer {
     // Safety: these structures have exactly the same shape, and when we use it
     // as a buffer of u32, we're doing it only as a fast way of moving u8. The
     // main portability risk here is endianness, but so be it.
-    unsafe {
-        core::mem::transmute(words)
-    }
+    unsafe { core::mem::transmute(words) }
 }

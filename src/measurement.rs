@@ -32,30 +32,43 @@ pub unsafe fn init() {
 
         rcc.ahb1enr.modify(|_, w| w.gpiocen().set_bit());
 
-        gpioc.pupdr.modify(|_, w| w
-                           .pupdr8().floating()
-                           .pupdr9().floating()
-                           .pupdr10().floating()
-                           .pupdr11().floating()
-        );
-        gpioc.ospeedr.modify(|_, w| w
-                             .ospeedr8().very_high_speed()
-                             .ospeedr9().very_high_speed()
-                             .ospeedr10().very_high_speed()
-                             .ospeedr11().very_high_speed()
-        );
-        gpioc.moder.modify(|_, w| w
-                           .moder8().output()
-                           .moder9().output()
-                           .moder10().output()
-                           .moder11().output()
-        )
+        gpioc.pupdr.modify(|_, w| {
+            w.pupdr8()
+                .floating()
+                .pupdr9()
+                .floating()
+                .pupdr10()
+                .floating()
+                .pupdr11()
+                .floating()
+        });
+        gpioc.ospeedr.modify(|_, w| {
+            w.ospeedr8()
+                .very_high_speed()
+                .ospeedr9()
+                .very_high_speed()
+                .ospeedr10()
+                .very_high_speed()
+                .ospeedr11()
+                .very_high_speed()
+        });
+        gpioc.moder.modify(|_, w| {
+            w.moder8()
+                .output()
+                .moder9()
+                .output()
+                .moder10()
+                .output()
+                .moder11()
+                .output()
+        })
     }
 }
 
 #[cfg(feature = "measurement")]
 fn write_gpioc_bsrr<F>(op: F)
-where F: FnOnce(&mut device::gpioi::bsrr::W) -> &mut device::gpioi::bsrr::W
+where
+    F: FnOnce(&mut device::gpioi::bsrr::W) -> &mut device::gpioi::bsrr::W,
 {
     // Safety: writes to this register are atomic and idempotent.
     unsafe { &*device::GPIOC::ptr() }.bsrr.write(op);
@@ -63,8 +76,10 @@ where F: FnOnce(&mut device::gpioi::bsrr::W) -> &mut device::gpioi::bsrr::W
 
 #[cfg(not(feature = "measurement"))]
 fn write_gpioc_bsrr<F>(_: F)
-where F: FnOnce(&mut device::gpioi::bsrr::W) -> &mut device::gpioi::bsrr::W
-{}
+where
+    F: FnOnce(&mut device::gpioi::bsrr::W) -> &mut device::gpioi::bsrr::W,
+{
+}
 
 /// Set measurement signal A.
 ///
@@ -121,5 +136,3 @@ pub fn sig_d_set() {
 pub fn sig_d_clear() {
     write_gpioc_bsrr(|w| w.br11().set_bit());
 }
-
-

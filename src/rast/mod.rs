@@ -4,11 +4,11 @@ pub mod bitmap_1;
 pub mod direct;
 pub mod text_10x16;
 
-use core::sync::atomic::{Ordering, AtomicUsize, AtomicBool};
-use core::cell::Cell;
-use scopeguard::defer;
-use crate::Pixel;
 use crate::priority;
+use crate::Pixel;
+use core::cell::Cell;
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use scopeguard::defer;
 
 /// Number of pixels in the target buffers given to raster callbacks.
 pub const TARGET_BUFFER_SIZE: usize = super::MAX_PIXELS_PER_LINE + 32;
@@ -30,17 +30,13 @@ impl TargetBuffer {
 impl core::ops::Deref for TargetBuffer {
     type Target = [Pixel; TARGET_BUFFER_SIZE];
     fn deref(&self) -> &Self::Target {
-        unsafe {
-            core::mem::transmute(&self.0)
-        }
+        unsafe { core::mem::transmute(&self.0) }
     }
 }
 
 impl core::ops::DerefMut for TargetBuffer {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe {
-            core::mem::transmute(&mut self.0)
-        }
+        unsafe { core::mem::transmute(&mut self.0) }
     }
 }
 
@@ -70,13 +66,15 @@ pub struct RasterCtx {
 }
 
 /// Utility routine for cheaply filling a line with a solid color.
-pub fn solid_color_fill(target: &mut TargetBuffer,
-                        ctx: &mut RasterCtx,
-                        width: usize,
-                        fill: Pixel) {
-    target[0] = fill;               // Same color.
-    ctx.target_range = 0..1;            // One pixel.
-    ctx.cycles_per_pixel *= width;      // Stretched across the whole line.
+pub fn solid_color_fill(
+    target: &mut TargetBuffer,
+    ctx: &mut RasterCtx,
+    width: usize,
+    fill: Pixel,
+) {
+    target[0] = fill; // Same color.
+    ctx.target_range = 0..1; // One pixel.
+    ctx.cycles_per_pixel *= width; // Stretched across the whole line.
 }
 
 // ---
@@ -136,12 +134,14 @@ impl IRef {
     ///
     /// If `self` is not empty. This means `donate` cannot be called recursively
     /// or from multiple threads simultaneously.
-    pub fn donate<'env, F, R>(&self,
-                              val: &'env mut F,
-                              scope: impl FnOnce() -> R)
-        -> R
-    where F: FnMut(usize, &mut TargetBuffer, &mut RasterCtx, priority::I0),
-          F: Send + 'env,
+    pub fn donate<'env, F, R>(
+        &self,
+        val: &'env mut F,
+        scope: impl FnOnce() -> R,
+    ) -> R
+    where
+        F: FnMut(usize, &mut TargetBuffer, &mut RasterCtx, priority::I0),
+        F: Send + 'env,
     {
         let r = self.state.compare_exchange(
             EMPTY,
@@ -198,14 +198,16 @@ impl IRef {
     ///
     /// This operation will never busy-wait (unless, of course, `body` contains
     /// code that will busy-wait).
-    pub(crate) fn observe<R, F>(&self,
-                                body: F)
-        -> Option<R>
-    where F: FnOnce(&mut (dyn FnMut(usize,
-                                    &mut TargetBuffer,
-                                    &mut RasterCtx,
-                                    priority::I0) + Send))
-             -> R
+    pub(crate) fn observe<R, F>(&self, body: F) -> Option<R>
+    where
+        F: FnOnce(
+            &mut (dyn FnMut(
+                usize,
+                &mut TargetBuffer,
+                &mut RasterCtx,
+                priority::I0,
+            ) + Send),
+        ) -> R,
     {
         self.state
             .compare_exchange(
@@ -223,8 +225,9 @@ impl IRef {
                     panic!("IRef poisoned by panic in observer")
                 }
 
-                let poisoner = scopeguard::guard((),
-                    |_| self.poisoned.store(true, Ordering::Release));
+                let poisoner = scopeguard::guard((), |_| {
+                    self.poisoned.store(true, Ordering::Release)
+                });
 
                 let result = {
                     let r = self.contents.get();
@@ -244,6 +247,4 @@ impl IRef {
                 result
             })
     }
-
 }
-

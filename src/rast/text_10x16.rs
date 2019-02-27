@@ -62,9 +62,7 @@ impl AChar {
 /// # Panics
 ///
 /// If `target` is not exactly `src.len() * GLYPH_COLS` bytes in length.
-pub fn unpack_raw(src: &[AChar],
-                  font_slice: &[u8; 256],
-                  target: &mut [Pixel]) {
+pub fn unpack_raw(src: &[AChar], font_slice: &[u8; 256], target: &mut [Pixel]) {
     assert_eq!(src.len() * GLYPH_COLS, target.len());
     unsafe {
         unpack_text_10p_attributed_impl(
@@ -110,11 +108,13 @@ pub fn unpack_raw(src: &[AChar],
 /// 2. Render as normal.
 /// 3. Adjust `RenderCtx::target_range`: slide it to the right by up to 10
 ///    pixels to effect scrolling.
-pub fn unpack(src: &[AChar],
-              font: &[[u8; 256]; 16],
-              target: &mut [Pixel],
-              line_number: usize,
-              cols: usize) {
+pub fn unpack(
+    src: &[AChar],
+    font: &[[u8; 256]; 16],
+    target: &mut [Pixel],
+    line_number: usize,
+    cols: usize,
+) {
     let text_row = line_number / GLYPH_ROWS;
     let glyph_row = line_number % GLYPH_ROWS;
     let pixel_width = cols * GLYPH_COLS;
@@ -123,15 +123,17 @@ pub fn unpack(src: &[AChar],
     let font_slice = &font[glyph_row];
 
     unpack_raw(
-        &src[offset .. offset + cols],
+        &src[offset..offset + cols],
         font_slice,
         &mut target[..pixel_width],
     )
 }
 
-extern {
-    fn unpack_text_10p_attributed_impl(input_line: *const AChar,
-                                       font: *const u8,
-                                       target: *mut Pixel,
-                                       cols_in_input: usize);
+extern "C" {
+    fn unpack_text_10p_attributed_impl(
+        input_line: *const AChar,
+        font: *const u8,
+        target: *mut Pixel,
+        cols_in_input: usize,
+    );
 }

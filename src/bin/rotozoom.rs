@@ -3,21 +3,20 @@
 #![no_std]
 #![no_main]
 
-#[cfg(feature = "panic-itm")]
-extern crate panic_itm;
 #[cfg(feature = "panic-halt")]
 extern crate panic_halt;
+#[cfg(feature = "panic-itm")]
+extern crate panic_itm;
 
 use stm32f4;
 use stm32f4::stm32f407::interrupt;
 
-use m4vga::rast::direct;
 use m4vga::math::{Mat3f, Vec2};
 use m4vga::priority;
+use m4vga::rast::direct;
 use m4vga::util::race_buf::RaceBuffer;
 
 use libm::F32Ext;
-
 
 const X_SCALE: usize = 2;
 const Y_SCALE: usize = 2;
@@ -66,16 +65,10 @@ fn main() -> ! {
             // the target buffer.
             #[link_section = ".ramcode"]
             |ln, tgt, ctx, p| {
-                let buf = reader.take_line(ln/Y_SCALE, &p);
+                let buf = reader.take_line(ln / Y_SCALE, &p);
                 ctx.cycles_per_pixel *= X_SCALE;
                 ctx.repeat_lines = Y_SCALE - 1;
-                direct::direct_color(
-                    0,
-                    tgt,
-                    ctx,
-                    buf,
-                    BUFFER_STRIDE,
-                );
+                direct::direct_color(0, tgt, ctx, buf, BUFFER_STRIDE);
             },
             // This closure contains the main loop of the program.
             |vga| {
@@ -100,12 +93,15 @@ fn main() -> ! {
 
                     let m_ = m * Mat3f::translate(tx, ty) * Mat3f::scale(s, s);
 
-                    let top_left = 
-                        (m_ * Vec2([-cols/2., -rows/2.]).augment()).project();
-                    let top_right =
-                        (m_ * Vec2([ cols/2., -rows/2.]).augment()).project();
-                    let bot_left =
-                        (m_ * Vec2([-cols/2.,  rows/2.]).augment()).project();
+                    let top_left = (m_
+                        * Vec2([-cols / 2., -rows / 2.]).augment())
+                    .project();
+                    let top_right = (m_
+                        * Vec2([cols / 2., -rows / 2.]).augment())
+                    .project();
+                    let bot_left = (m_
+                        * Vec2([-cols / 2., rows / 2.]).augment())
+                    .project();
 
                     let xi = (top_right - top_left) * (1. / cols);
                     let yi = (bot_left - top_left) * (1. / rows);
@@ -131,7 +127,8 @@ fn main() -> ! {
                     vga.sync_to_vblank();
                     writer.reset(&thread);
                 }
-            })
+            },
+        )
 }
 
 fn tex_fetch(u: f32, v: f32) -> u32 {
@@ -140,9 +137,7 @@ fn tex_fetch(u: f32, v: f32) -> u32 {
 
 fn u32_as_u8_mut(r: &mut Row) -> &mut Row8 {
     assert_eq!(core::mem::size_of::<Row>(), core::mem::size_of::<Row8>());
-    unsafe {
-        core::mem::transmute(r)
-    }
+    unsafe { core::mem::transmute(r) }
 }
 
 /// Wires up the PendSV handler expected by the driver.

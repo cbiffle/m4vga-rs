@@ -9,9 +9,7 @@ impl Font {
         // Safety: this is how the font is laid out internally. We'd represent
         // it that way in memory, too, except then `include_bytes!` wouldn't
         // work.
-        unsafe {
-            core::mem::transmute(&self.0)
-        }
+        unsafe { core::mem::transmute(&self.0) }
     }
 }
 

@@ -33,27 +33,27 @@
 #![no_std]
 #![no_main]
 
-#[cfg(feature = "panic-itm")]
-extern crate panic_itm;
 #[cfg(feature = "panic-halt")]
 extern crate panic_halt;
+#[cfg(feature = "panic-itm")]
+extern crate panic_itm;
 
 use stm32f4;
 use stm32f4::stm32f407::interrupt;
 
-use m4vga::rast::text_10x16::{self, AChar};
 use m4vga::font_10x16;
+use m4vga::rast::text_10x16::{self, AChar};
 use m4vga::util::spin_lock::SpinLock;
 
 const COLS: usize = 80;
 const ROWS: usize = 37;
 
-const WHITE:   u8 = 0b11_11_11;
-const BLACK:   u8 = 0b00_00_00;
+const WHITE: u8 = 0b11_11_11;
+const BLACK: u8 = 0b00_00_00;
 const DK_GRAY: u8 = 0b01_01_01;
-const RED:     u8 = 0b00_00_11;
-const GREEN:   u8 = 0b00_11_00;
-const BLUE:    u8 = 0b11_00_00;
+const RED: u8 = 0b00_00_11;
+const GREEN: u8 = 0b00_11_00;
+const BLUE: u8 = 0b11_00_00;
 
 static TEXT_BUF: SpinLock<[AChar; COLS * ROWS]> =
     SpinLock::new([AChar::from_ascii_char(0); COLS * ROWS]);
@@ -81,7 +81,8 @@ fn main() -> ! {
         c.bg = BLACK;
         c.puts(b" colors.\n");
         c.bg = 0b10_00_00;
-        c.puts(br#"
+        c.puts(
+            br#"
        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nam ut
        tellus quam. Cras ornare facilisis sollicitudin. Quisque quis
        imperdiet mauris. Proin malesuada nibh dolor, eu luctus mauris
@@ -107,7 +108,7 @@ fn main() -> ! {
        vitae molestie nibh nunc ut metus. Nulla commodo, lacus nec
        interdum dignissim, libero dolor consequat mi, non euismod velit
        sem nec dui. Praesent ligula turpis, auctor non purus eu,
-       adipiscing pellentesque felis."#
+       adipiscing pellentesque felis."#,
         );
         c.putc(b'\n');
     }
@@ -129,17 +130,12 @@ fn main() -> ! {
                         ln,
                         COLS,
                     );
-                    ctx.target_range = 0 .. COLS * text_10x16::GLYPH_COLS;
+                    ctx.target_range = 0..COLS * text_10x16::GLYPH_COLS;
                 } else {
                     // There's a partial 38th line visible on the display.
                     // Trying to display it will panic by going out of range on
                     // the 80x37 buffer. Instead, we'll just black it out:
-                    m4vga::rast::solid_color_fill(
-                        tgt,
-                        ctx,
-                        800,
-                        0,
-                    );
+                    m4vga::rast::solid_color_fill(tgt, ctx, 800, 0);
                     // Save some CPU while we're at it by not invoking the
                     // callback again this frame.
                     ctx.repeat_lines = 600 - 592;
@@ -164,7 +160,8 @@ fn main() -> ! {
                     write!(&mut c, "Welcome to frame {}", frame_no).unwrap();
                     frame_no += 1;
                 }
-            })
+            },
+        )
 }
 
 /// A simple cursor wrapping a text buffer. Provides terminal-style operations.
@@ -194,7 +191,7 @@ impl<'a> Cursor<'a> {
             b'\n' => {
                 let pos = self.row * COLS + self.col;
                 let end_of_line = (pos + (COLS - 1)) / COLS * COLS;
-                for p in &mut self.buf[pos .. end_of_line] {
+                for p in &mut self.buf[pos..end_of_line] {
                     *p = AChar::from_ascii_char(b' ')
                         .with_foreground(self.fg)
                         .with_background(self.bg)
@@ -203,9 +200,10 @@ impl<'a> Cursor<'a> {
                 self.row += 1;
             }
             _ => {
-                self.buf[self.row * COLS + self.col] = AChar::from_ascii_char(c)
-                    .with_foreground(self.fg)
-                    .with_background(self.bg);
+                self.buf[self.row * COLS + self.col] =
+                    AChar::from_ascii_char(c)
+                        .with_foreground(self.fg)
+                        .with_background(self.bg);
                 self.col += 1;
                 if self.col == COLS {
                     self.col = 0;
@@ -217,7 +215,9 @@ impl<'a> Cursor<'a> {
 
     /// Types each character from an ASCII slice.
     pub fn puts(&mut self, s: &[u8]) {
-        for c in s { self.putc(*c) }
+        for c in s {
+            self.putc(*c)
+        }
     }
 
     /// Repositions the cursor.
@@ -258,5 +258,3 @@ fn TIM3() {
 fn TIM4() {
     m4vga::tim4_horiz_isr()
 }
-
-

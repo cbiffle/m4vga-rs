@@ -41,7 +41,9 @@ macro_rules! block_while {
 }
 
 macro_rules! block_until {
-    ($condition:expr) => { block_while!(!$condition) };
+    ($condition:expr) => {
+        block_while!(!$condition)
+    };
 }
 
 /// Applies the settings described in `cfg` to the `rcc` and `flash`. (The flash
@@ -49,15 +51,18 @@ macro_rules! block_until {
 ///
 /// The algorithm used can transition from any valid clock config to any other,
 /// by switching to the internal high-speed oscillator in between modes.
-pub fn configure_clocks(rcc: &device::RCC,
-                        flash: &device::FLASH,
-                        cfg: &ClockConfig) {
+pub fn configure_clocks(
+    rcc: &device::RCC,
+    flash: &device::FLASH,
+    cfg: &ClockConfig,
+) {
     // Switch to the internal 16MHz oscillator while messing with the PLL.
     rcc.cr.modify(|_, w| w.hsion().set_bit());
     // Wait for it to stabilize.
     block_until! { rcc.cr.read().hsirdy().bit() }
     // Make the switch.
-    rcc.cfgr.modify(|_, w| w.sw().variant(device::rcc::cfgr::SWW::HSI));
+    rcc.cfgr
+        .modify(|_, w| w.sw().variant(device::rcc::cfgr::SWW::HSI));
     // Wait for it.
     block_until! { rcc.cfgr.read().sws() == device::rcc::cfgr::SWSR::HSI }
 
@@ -66,12 +71,18 @@ pub fn configure_clocks(rcc: &device::RCC,
     block_while! { rcc.cr.read().pllrdy().bit() }
 
     // Apply divisors before boosting frequency.
-    rcc.cfgr.modify(|_, w| w
-                    .hpre().variant(cfg.ahb_divisor.copy_hack())
-                    .ppre1().variant(cfg.apb1_divisor.copy_hack())
-                    .ppre2().variant(cfg.apb2_divisor.copy_hack()));
+    rcc.cfgr.modify(|_, w| {
+        w.hpre()
+            .variant(cfg.ahb_divisor.copy_hack())
+            .ppre1()
+            .variant(cfg.apb1_divisor.copy_hack())
+            .ppre2()
+            .variant(cfg.apb2_divisor.copy_hack())
+    });
 
-    flash.acr.modify(|_, w| w.latency().variant(cfg.flash_latency.copy_hack()));
+    flash
+        .acr
+        .modify(|_, w| w.latency().variant(cfg.flash_latency.copy_hack()));
 
     // Switch on the crystal oscillator.
     rcc.cr.modify(|_, w| w.hseon().set_bit());
@@ -81,13 +92,21 @@ pub fn configure_clocks(rcc: &device::RCC,
 
     rcc.pllcfgr.modify(|_, w| {
         // Safety: only unsafe due to upstream bug. TODO
-        unsafe { w.pllm().bits(cfg.crystal_divisor); }
+        unsafe {
+            w.pllm().bits(cfg.crystal_divisor);
+        }
         // Safety: only unsafe due to upstream bug. TODO
-        unsafe { w.plln().bits(cfg.vco_multiplier); }
+        unsafe {
+            w.plln().bits(cfg.vco_multiplier);
+        }
         // Safety: only unsafe due to upstream bug. TODO
-        unsafe { w.pllq().bits(cfg.pll48_divisor); }
-        w.pllp().variant(cfg.general_divisor.copy_hack()) // half yay/half TODO
-            .pllsrc().variant(device::rcc::pllcfgr::PLLSRCW::HSE) // yay
+        unsafe {
+            w.pllq().bits(cfg.pll48_divisor);
+        }
+        w.pllp()
+            .variant(cfg.general_divisor.copy_hack()) // half yay/half TODO
+            .pllsrc()
+            .variant(device::rcc::pllcfgr::PLLSRCW::HSE) // yay
     });
 
     // Turn it on.
@@ -95,7 +114,8 @@ pub fn configure_clocks(rcc: &device::RCC,
     block_until! { rcc.cr.read().pllrdy().bit() }
 
     // Select PLL as clock source.
-    rcc.cfgr.modify(|_, w| w.sw().variant(device::rcc::cfgr::SWW::PLL));
+    rcc.cfgr
+        .modify(|_, w| w.sw().variant(device::rcc::cfgr::SWW::PLL));
     block_until! { rcc.cfgr.read().sws() == device::rcc::cfgr::SWSR::PLL }
 }
 

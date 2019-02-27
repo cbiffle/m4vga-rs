@@ -3,17 +3,17 @@
 #![no_std]
 #![no_main]
 
-#[cfg(feature = "panic-itm")]
-extern crate panic_itm;
 #[cfg(feature = "panic-halt")]
 extern crate panic_halt;
+#[cfg(feature = "panic-itm")]
+extern crate panic_itm;
 
 mod table;
 
+use m4vga::rast::direct;
+use m4vga::util::spin_lock::SpinLock;
 use stm32f4;
 use stm32f4::stm32f407::interrupt;
-use m4vga::util::spin_lock::SpinLock;
-use m4vga::rast::direct;
 use table::Entry;
 
 const NATIVE_WIDTH: usize = 800;
@@ -36,7 +36,6 @@ static mut BUF1: [u32; BUFFER_WORDS] = [0; BUFFER_WORDS];
 static mut TABLE: table::Table =
     [[Entry::zero(); table::TAB_WIDTH]; table::TAB_HEIGHT];
 
-
 /// Demo entry point. Responsible for starting up the display driver and
 /// providing callbacks.
 #[allow(unused_parens)] // TODO bug in cortex_m_rt
@@ -57,25 +56,14 @@ fn main() -> ! {
         .with_raster(
             |ln, tgt, ctx, _| {
                 if ln < 4 || ln > 595 {
-                    m4vga::rast::solid_color_fill(
-                        tgt,
-                        ctx,
-                        800,
-                        0,
-                    );
-                    return
+                    m4vga::rast::solid_color_fill(tgt, ctx, 800, 0);
+                    return;
                 }
                 let buf = fg.try_lock().expect("rast fg access");
 
                 let ln = ln / SCALE;
                 if ln < HALF_HEIGHT {
-                    direct::direct_color(
-                        ln,
-                        tgt,
-                        ctx,
-                        *buf,
-                        BUFFER_STRIDE,
-                    );
+                    direct::direct_color(ln, tgt, ctx, *buf, BUFFER_STRIDE);
                 } else {
                     direct::direct_color_mirror(
                         ln,
@@ -95,20 +83,21 @@ fn main() -> ! {
                 let mut frame = 0;
                 loop {
                     vga.sync_to_vblank();
-                    core::mem::swap(&mut bg,
-                                    &mut *fg.try_lock().expect("swap access"));
+                    core::mem::swap(
+                        &mut bg,
+                        &mut *fg.try_lock().expect("swap access"),
+                    );
                     let bg = u32_as_u8_mut(bg);
                     m4vga::measurement::sig_d_set();
                     render(table, bg, frame);
                     m4vga::measurement::sig_d_clear();
                     frame = (frame + 1) % 65536; // prevent windup
                 }
-            })
+            },
+        )
 }
 
-fn render(table: &table::Table,
-          fb: &mut [u8],
-          frame: usize) {
+fn render(table: &table::Table, fb: &mut [u8], frame: usize) {
     const DSPEED: f32 = 1.;
     const ASPEED: f32 = 0.2;
 
@@ -121,7 +110,7 @@ fn render(table: &table::Table,
 
     // Outer loops: iterate over each macroblock in the display, left-to-right,
     // top-to-bottom.  'y' and 'x' are in macroblock (table) coordinates.
-    for y in 0 .. HALF_HEIGHT / table::SUB {
+    for y in 0..HALF_HEIGHT / table::SUB {
         // To process a macroblock, we need to look up the table entries at each
         // of its four corners.  When processing macroblocks left to right, the
         // right corners of a block are the left corners of its neighbor -- so
@@ -132,7 +121,7 @@ fn render(table: &table::Table,
         let mut top_left = table[y][0];
         let mut bot_left = table[y + 1][0];
 
-        for x in 0 .. HALF_WIDTH / table::SUB {
+        for x in 0..HALF_WIDTH / table::SUB {
             // Load the two corners at the right side of the current block.
             let top_right = table[y][x + 1];
             let bot_right = table[y + 1][x + 1];
@@ -164,7 +153,7 @@ fn render(table: &table::Table,
 
             // Process pixel rows within the macroblock.  'sy' and 'sx' are in
             // pixel coordinates.
-            for sy in y * table::SUB .. (y + 1) * table::SUB {
+            for sy in y * table::SUB..(y + 1) * table::SUB {
                 // We'll need this term repeatedly below; precompute it.
                 let inv_sy = HALF_HEIGHT - 1 - sy;
 
@@ -178,17 +167,17 @@ fn render(table: &table::Table,
                     angle: (right.angle - left.angle) / table::SUB as f32,
                 };
 
-                for sx in x * table::SUB .. (x + 1) * table::SUB {
+                for sx in x * table::SUB..(x + 1) * table::SUB {
                     // Quadrant II (upper-left): apply trig identity to correct
                     // the angle value.
                     let a1 = -v.angle + table::TEX_PERIOD_A as f32 + a;
                     let p1 = color(v.distance, a1, v.distance + z);
-                    fb[inv_sy * WIDTH + (WIDTH/2 - 1 - sx)] = p1 as u8;
+                    fb[inv_sy * WIDTH + (WIDTH / 2 - 1 - sx)] = p1 as u8;
 
                     // Quadrant I (upper-right): use the angle value as written.
                     let a2 = v.angle + a;
                     let p2 = color(v.distance, a2, v.distance + z);
-                    fb[inv_sy * WIDTH + sx + WIDTH/2] = p2 as u8;
+                    fb[inv_sy * WIDTH + sx + WIDTH / 2] = p2 as u8;
 
                     // Quadrants III/IV, of course, are handled through
                     // rasterization tricks, and not computed here.
@@ -235,8 +224,7 @@ fn shade(distance: f32, pixel: u32) -> u32 {
     if sel < 4 {
         // sel is 0..4
         let sel = sel * 8; // sel is 0..32, shifts should not be UB
-        (pixel >> (0x01010000_u32 >> sel))
-            & (0x5555AAFF_u32 >> sel)
+        (pixel >> (0x01010000_u32 >> sel)) & (0x5555AAFF_u32 >> sel)
     } else {
         0
     }

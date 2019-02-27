@@ -18,8 +18,10 @@
 /// an opportunity to execute by the time this function returns.
 ///
 /// If the interrupt was already enabled, this is a no-op.
-pub fn enable_irq(nvic: &mut cortex_m::peripheral::NVIC,
-                  i: impl cortex_m::interrupt::Nr) {
+pub fn enable_irq(
+    nvic: &mut cortex_m::peripheral::NVIC,
+    i: impl cortex_m::interrupt::Nr,
+) {
     nvic.enable(i);
     cortex_m::asm::dmb();
     cortex_m::asm::isb();
@@ -31,8 +33,10 @@ pub fn enable_irq(nvic: &mut cortex_m::peripheral::NVIC,
 /// this interrupt.
 ///
 /// If the interrupt was already disabled, this is a no-op.
-pub fn disable_irq(nvic: &mut cortex_m::peripheral::NVIC,
-                   i: impl cortex_m::interrupt::Nr) {
+pub fn disable_irq(
+    nvic: &mut cortex_m::peripheral::NVIC,
+    i: impl cortex_m::interrupt::Nr,
+) {
     nvic.disable(i);
     cortex_m::asm::dmb();
     cortex_m::asm::isb();

@@ -7,8 +7,8 @@
 //! The implementation is based closely on `RefCell` but using atomic memory
 //! updates.
 
-use core::sync::atomic::{AtomicIsize, Ordering};
 use core::cell::UnsafeCell;
+use core::sync::atomic::{AtomicIsize, Ordering};
 
 pub struct ReadWriteLock<T: ?Sized> {
     status: AtomicIsize,
@@ -57,7 +57,7 @@ impl<T: ?Sized> ReadWriteLock<T> {
             // be created, abort.
             let status = self.status.load(Ordering::Acquire);
             if read_unavail(status) {
-                return Err(TryLockError::Unavailable)
+                return Err(TryLockError::Unavailable);
             }
 
             // Attempt to atomically increment the status to record a new read
@@ -68,15 +68,17 @@ impl<T: ?Sized> ReadWriteLock<T> {
                 status,
                 status + 1,
                 Ordering::Release,
-                Ordering::Relaxed
+                Ordering::Relaxed,
             );
             match cmpxchg_result {
-                Ok(_) => break Ok(Guard {
-                    borrow: Borrow(&self.status),
-                    // Safety: we're locked, so it's safe to generate a *shared*
-                    // reference.
-                    value: unsafe { &*self.value.get() },
-                }),
+                Ok(_) => {
+                    break Ok(Guard {
+                        borrow: Borrow(&self.status),
+                        // Safety: we're locked, so it's safe to generate a *shared*
+                        // reference.
+                        value: unsafe { &*self.value.get() },
+                    });
+                }
                 Err(_) => continue,
             }
         }
@@ -103,22 +105,24 @@ impl<T: ?Sized> ReadWriteLock<T> {
         loop {
             let status = self.status.load(Ordering::Acquire);
             if status != 0 {
-                return Err(TryLockMutError::Unavailable)
+                return Err(TryLockMutError::Unavailable);
             }
 
             let cmpxchg_result = self.status.compare_exchange_weak(
                 status,
                 status - 1,
                 Ordering::Release,
-                Ordering::Relaxed
+                Ordering::Relaxed,
             );
             match cmpxchg_result {
-                Ok(_) => break Ok(GuardMut {
-                    borrow: BorrowMut(&self.status),
-                    // Safety: we're exclusively locked, so it's safe to
-                    // generate an exclusive reference.
-                    value: unsafe { &mut *self.value.get() },
-                }),
+                Ok(_) => {
+                    break Ok(GuardMut {
+                        borrow: BorrowMut(&self.status),
+                        // Safety: we're exclusively locked, so it's safe to
+                        // generate an exclusive reference.
+                        value: unsafe { &mut *self.value.get() },
+                    });
+                }
                 Err(_) => continue,
             }
         }
@@ -133,7 +137,6 @@ impl<T: ?Sized> ReadWriteLock<T> {
             }
         }
     }
-
 }
 
 /// Smart pointer type representing a read lock on a `ReadWriteLock`.
@@ -143,12 +146,15 @@ pub struct Guard<'a, T: ?Sized> {
 }
 
 impl<'a, T: ?Sized> Guard<'a, T> {
-    pub fn map<U>(orig: Guard<'a, T>,
-                  f: impl FnOnce(&T) -> &U)
-        -> Guard<'a, U>
-    {
+    pub fn map<U>(
+        orig: Guard<'a, T>,
+        f: impl FnOnce(&T) -> &U,
+    ) -> Guard<'a, U> {
         let Guard { borrow, value } = orig;
-        Guard { borrow, value: f(value) }
+        Guard {
+            borrow,
+            value: f(value),
+        }
     }
 }
 
@@ -175,12 +181,15 @@ pub struct GuardMut<'a, T: ?Sized> {
 }
 
 impl<'a, T: ?Sized> GuardMut<'a, T> {
-    pub fn map<U>(orig: GuardMut<'a, T>,
-                  f: impl FnOnce(&mut T) -> &mut U)
-        -> GuardMut<'a, U>
-    {
+    pub fn map<U>(
+        orig: GuardMut<'a, T>,
+        f: impl FnOnce(&mut T) -> &mut U,
+    ) -> GuardMut<'a, U> {
         let GuardMut { borrow, value } = orig;
-        GuardMut { borrow, value: f(value) }
+        GuardMut {
+            borrow,
+            value: f(value),
+        }
     }
 }
 
@@ -206,8 +215,12 @@ impl<'a> Drop for BorrowMut<'a> {
     }
 }
 
-fn writing(x: isize) -> bool { x < 0 }
-fn reading(x: isize) -> bool { x > 0 }
+fn writing(x: isize) -> bool {
+    x < 0
+}
+fn reading(x: isize) -> bool {
+    x > 0
+}
 
 /// Checks if we *can't* take out a read lock given a status word. We can't take
 /// out a read lock if:

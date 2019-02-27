@@ -1,32 +1,32 @@
 #![no_std]
 
-pub mod timing;
-pub mod rast;
-pub mod util;
 pub mod font_10x16;
+pub mod rast;
+pub mod timing;
+pub mod util;
 
 pub mod measurement;
 
-mod startup;
 pub mod math;
+mod startup;
 
-pub mod priority;
-mod hstate;
 mod bg_rast;
+mod hstate;
+pub mod priority;
 mod shock;
 
-use stm32f4::stm32f407 as device;
 use cortex_m::peripheral as cm;
+use stm32f4::stm32f407 as device;
 
 use cortex_m::peripheral::scb::SystemHandler;
 
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use crate::util::armv7m::{enable_irq, disable_irq, clear_pending_irq};
-use crate::util::stm32::{UsefulDivisor, CopyHack, configure_clocks};
-use crate::util::spin_lock::{SpinLock, SpinLockGuard};
 use crate::rast::{RasterCtx, TargetBuffer};
 use crate::timing::Polarity;
+use crate::util::armv7m::{clear_pending_irq, disable_irq, enable_irq};
+use crate::util::spin_lock::{SpinLock, SpinLockGuard};
+use crate::util::stm32::{configure_clocks, CopyHack, UsefulDivisor};
 
 /// Representation of a pixel in memory.
 ///
@@ -46,8 +46,8 @@ pub const MAX_PIXELS_PER_LINE: usize = 800;
 // re-export ISR entry points
 
 pub use crate::bg_rast::maintain_raster_isr as pendsv_raster_isr;
-pub use crate::shock::shock_absorber_isr as tim3_shock_isr;
 pub use crate::hstate::hstate_isr as tim4_horiz_isr;
+pub use crate::shock::shock_absorber_isr as tim3_shock_isr;
 
 /// Driver handle.
 ///
@@ -83,7 +83,7 @@ pub struct Vga<S> {
     rcc: device::RCC,
     flash: device::FLASH,
     gpioe: device::GPIOE,
-    nvic: cm::NVIC,  // TODO probably should not own this
+    nvic: cm::NVIC, // TODO probably should not own this
 
     mode_state: S,
 }
@@ -125,24 +125,42 @@ impl<T> Vga<T> {
     /// Disables video output. This is not synchronized and can happen in the
     /// middle of the frame; if that bothers you, synchronize with vblank.
     pub fn video_off(&self) {
-        self.gpioe.pupdr.modify(|_, w| w
-                                .pupdr8().pull_down()
-                                .pupdr9().pull_down()
-                                .pupdr10().pull_down()
-                                .pupdr11().pull_down()
-                                .pupdr12().pull_down()
-                                .pupdr13().pull_down()
-                                .pupdr14().pull_down()
-                                .pupdr15().pull_down());
-        self.gpioe.moder.modify(|_, w| w
-                                .moder8().input()
-                                .moder9().input()
-                                .moder10().input()
-                                .moder11().input()
-                                .moder12().input()
-                                .moder13().input()
-                                .moder14().input()
-                                .moder15().input());
+        self.gpioe.pupdr.modify(|_, w| {
+            w.pupdr8()
+                .pull_down()
+                .pupdr9()
+                .pull_down()
+                .pupdr10()
+                .pull_down()
+                .pupdr11()
+                .pull_down()
+                .pupdr12()
+                .pull_down()
+                .pupdr13()
+                .pull_down()
+                .pupdr14()
+                .pull_down()
+                .pupdr15()
+                .pull_down()
+        });
+        self.gpioe.moder.modify(|_, w| {
+            w.moder8()
+                .input()
+                .moder9()
+                .input()
+                .moder10()
+                .input()
+                .moder11()
+                .input()
+                .moder12()
+                .input()
+                .moder13()
+                .input()
+                .moder14()
+                .input()
+                .moder15()
+                .input()
+        });
     }
 }
 
@@ -187,7 +205,7 @@ impl Vga<Idle> {
         // Place the horizontal timers in reset, disabling interrupts.
         disable_h_timer(
             &mut self.nvic,
-            &device::Interrupt::TIM4, 
+            &device::Interrupt::TIM4,
             &self.rcc,
             |w| w.tim4rst().set_bit(),
         );
@@ -223,29 +241,37 @@ impl Vga<Idle> {
         );
 
         // Adjust tim3's CC2 value back in time.
-        self.mode_state.tim3.ccr2.modify(|r, w| w.ccr2().bits(
-                r.ccr2().bits() - shock::SHOCK_ABSORBER_SHIFT_CYCLES));
+        self.mode_state.tim3.ccr2.modify(|r, w| {
+            w.ccr2()
+                .bits(r.ccr2().bits() - shock::SHOCK_ABSORBER_SHIFT_CYCLES)
+        });
 
         // Configure tim3 to distribute its enable signal as its trigger output.
-        self.mode_state.tim3.cr2.write(|w| w
-                       .mms().enable()
-                       .ccds().clear_bit());
+        self.mode_state
+            .tim3
+            .cr2
+            .write(|w| w.mms().enable().ccds().clear_bit());
 
         let tim4 = &self.mode_state.hstate.tim4;
 
         // Configure tim4 to trigger from tim3 and run forever.
         tim4.smcr.write(|w| {
-            use crate::util::stm32::VariantExt;
             use crate::util::stm32 as device;
+            use crate::util::stm32::VariantExt;
 
-            w.ts().variant(device::tim3::smcr::TSW::ITR2)
-                .sms().variant(device::tim3::smcr::SMSW::Trigger)
+            w.ts()
+                .variant(device::tim3::smcr::TSW::ITR2)
+                .sms()
+                .variant(device::tim3::smcr::SMSW::Trigger)
         });
 
         // Turn on tim4's interrupts.
-        tim4.dier.write(|w| w
-             .cc2ie().set_bit()    // Interrupt at start of active video.
-             .cc3ie().set_bit());  // Interrupt at end of active video.
+        tim4.dier.write(|w| {
+            w.cc2ie()
+                .set_bit() // Interrupt at start of active video.
+                .cc3ie()
+                .set_bit()
+        }); // Interrupt at end of active video.
 
         // Turn on only one of tim3's:
         // Interrupt at start of active video.
@@ -310,19 +336,15 @@ impl Vga<Sync> {
     ///
     /// During the execution of `scope` the application has access to the driver
     /// in a different state, `Vga<Ready>`, which exposes additional operations.
-    pub fn with_raster<R>(&mut self,
-                          mut rast: impl FnMut(usize,
-                                               &mut TargetBuffer,
-                                               &mut RasterCtx,
-                                               priority::I0)
-                                         + Send,
-                          scope: impl FnOnce(&mut Vga<Live>) -> R)
-        -> R
-    {
+    pub fn with_raster<R>(
+        &mut self,
+        mut rast: impl FnMut(usize, &mut TargetBuffer, &mut RasterCtx, priority::I0)
+            + Send,
+        scope: impl FnOnce(&mut Vga<Live>) -> R,
+    ) -> R {
         // We're punning our self reference for the other typestate below, so
         // make sure that's likely to work: (this assert should disappear)
-        assert_eq!(core::mem::size_of::<Sync>(),
-                   core::mem::size_of::<Live>());
+        assert_eq!(core::mem::size_of::<Sync>(), core::mem::size_of::<Live>());
 
         RASTER.donate(&mut rast, || {
             // Safety: I'm being super lazy here and punning a `Vga<Sync>`
@@ -338,37 +360,64 @@ impl Vga<Live> {
     /// middle of the frame; if that bothers you, synchronize with vblank.
     pub fn video_on(&mut self) {
         // Disable pullups/pulldowns.
-        self.gpioe.pupdr.modify(|_, w| w
-                                .pupdr8().floating()
-                                .pupdr9().floating()
-                                .pupdr10().floating()
-                                .pupdr11().floating()
-                                .pupdr12().floating()
-                                .pupdr13().floating()
-                                .pupdr14().floating()
-                                .pupdr15().floating());
+        self.gpioe.pupdr.modify(|_, w| {
+            w.pupdr8()
+                .floating()
+                .pupdr9()
+                .floating()
+                .pupdr10()
+                .floating()
+                .pupdr11()
+                .floating()
+                .pupdr12()
+                .floating()
+                .pupdr13()
+                .floating()
+                .pupdr14()
+                .floating()
+                .pupdr15()
+                .floating()
+        });
         // Configure for very sharp edges. According to the reference manual
         // this sets the filter to 100MHz; at our 40MHz pixel clock this is an
         // improvement.
-        self.gpioe.ospeedr.modify(|_, w| w
-                                  .ospeedr8().very_high_speed()
-                                  .ospeedr9().very_high_speed()
-                                  .ospeedr10().very_high_speed()
-                                  .ospeedr11().very_high_speed()
-                                  .ospeedr12().very_high_speed()
-                                  .ospeedr13().very_high_speed()
-                                  .ospeedr14().very_high_speed()
-                                  .ospeedr15().very_high_speed());
+        self.gpioe.ospeedr.modify(|_, w| {
+            w.ospeedr8()
+                .very_high_speed()
+                .ospeedr9()
+                .very_high_speed()
+                .ospeedr10()
+                .very_high_speed()
+                .ospeedr11()
+                .very_high_speed()
+                .ospeedr12()
+                .very_high_speed()
+                .ospeedr13()
+                .very_high_speed()
+                .ospeedr14()
+                .very_high_speed()
+                .ospeedr15()
+                .very_high_speed()
+        });
         // Configure for output.
-        self.gpioe.moder.modify(|_, w| w
-                                .moder8().output()
-                                .moder9().output()
-                                .moder10().output()
-                                .moder11().output()
-                                .moder12().output()
-                                .moder13().output()
-                                .moder14().output()
-                                .moder15().output());
+        self.gpioe.moder.modify(|_, w| {
+            w.moder8()
+                .output()
+                .moder9()
+                .output()
+                .moder10()
+                .output()
+                .moder11()
+                .output()
+                .moder12()
+                .output()
+                .moder13()
+                .output()
+                .moder14()
+                .output()
+                .moder15()
+                .output()
+        });
     }
 }
 
@@ -408,21 +457,22 @@ impl Vga<Live> {
 /// [`Idle`]: struct.Idle.html
 /// [`configure_timing`]: struct.Vga.html#method.configure_timing
 /// [`with_raster`]: struct.Vga.html#method.with_raster
-pub fn init(mut nvic: cm::NVIC,
-            scb: &mut cm::SCB,
-            flash: device::FLASH,
-            dbg: &device::DBG,
-            rcc: device::RCC,
-            gpiob: device::GPIOB,
-            gpioe: device::GPIOE,
-            tim1: device::TIM1,
-            tim3: device::TIM3,
-            tim4: device::TIM4,
-            dma2: device::DMA2)
-    -> Vga<Idle>
-{
-
-    unsafe { measurement::init(); }
+pub fn init(
+    mut nvic: cm::NVIC,
+    scb: &mut cm::SCB,
+    flash: device::FLASH,
+    dbg: &device::DBG,
+    rcc: device::RCC,
+    gpiob: device::GPIOB,
+    gpioe: device::GPIOE,
+    tim1: device::TIM1,
+    tim3: device::TIM3,
+    tim4: device::TIM4,
+    dma2: device::DMA2,
+) -> Vga<Idle> {
+    unsafe {
+        measurement::init();
+    }
 
     let previous_instance = DRIVER_INIT_FLAG.swap(true, Ordering::SeqCst);
     assert_eq!(previous_instance, false);
@@ -437,19 +487,16 @@ pub fn init(mut nvic: cm::NVIC,
     //p.SYSCFG.cmpcr.modify(|_, w| w.cmp_pd().enabled());
 
     // Turn a bunch of stuff on.
-    rcc.ahb1enr.modify(|_, w| w
-                       .gpioben().enabled()
-                       .gpioeen().enabled()
-                       .dma2en().enabled());
+    rcc.ahb1enr.modify(|_, w| {
+        w.gpioben().enabled().gpioeen().enabled().dma2en().enabled()
+    });
     cortex_m::asm::dmb(); // ensure DMA is powered on before we write to it
 
     // DMA configuration.
-    
+
     // Configure FIFO.
-    dma2.s5fcr.write(|w| w
-                     .fth().quarter()
-                     .dmdis().enabled()
-                     .feie().disabled());
+    dma2.s5fcr
+        .write(|w| w.fth().quarter().dmdis().enabled().feie().disabled());
 
     // Enable the pixel-generation timer.
     // We use TIM1; it's an APB2 (fast) peripheral, and with our clock config
@@ -470,18 +517,16 @@ pub fn init(mut nvic: cm::NVIC,
     }
 
     // Enable Flash cache and prefetching to reduce jitter.
-    flash.acr.modify(|_, w| w
-                     .dcen().enabled()
-                     .icen().enabled()
-                     .prften().enabled());
+    flash
+        .acr
+        .modify(|_, w| w.dcen().enabled().icen().enabled().prften().enabled());
 
     // Stop all video-related timers on debug halt, which makes debugging
     // waaaaay easier.
-    dbg.dbgmcu_apb1_fz.modify(|_, w| w
-                              .dbg_tim4_stop().set_bit()
-                              .dbg_tim3_stop().set_bit());
-    dbg.dbgmcu_apb2_fz.modify(|_, w| w
-                              .dbg_tim1_stop().set_bit());
+    dbg.dbgmcu_apb1_fz
+        .modify(|_, w| w.dbg_tim4_stop().set_bit().dbg_tim3_stop().set_bit());
+    dbg.dbgmcu_apb2_fz
+        .modify(|_, w| w.dbg_tim1_stop().set_bit());
 
     let vga = Vga {
         rcc,
@@ -535,7 +580,8 @@ pub fn take_hardware() -> Vga<Idle> {
         p.TIM1,
         p.TIM3,
         p.TIM4,
-        p.DMA2)
+        p.DMA2,
+    )
 }
 
 /// Records when a driver instance has been initialized. This is only allowed to
@@ -554,10 +600,10 @@ static HPSHARE: SpinLock<Option<HPShared>> = SpinLock::new(None);
 /// Hardware required by the horizontal state machine (and bits of it are shared
 /// by PendSV, largely as an optimization).
 struct HStateHw {
-    dma2: device::DMA2,     // PendSV HState
-    tim1: device::TIM1,     // PendSV HState
-    tim4: device::TIM4,     //        HState
-    gpiob: device::GPIOB,   //        HState
+    dma2: device::DMA2,   // PendSV HState
+    tim1: device::TIM1,   // PendSV HState
+    tim4: device::TIM4,   //        HState
+    gpiob: device::GPIOB, //        HState
 }
 
 /// Groups parameters produced by PendSV for HState to consume, describing the
@@ -579,29 +625,29 @@ static RASTER: rast::IRef = rast::IRef::new();
 
 /// Turns off sync outputs. This used to be public API, but I never use it, so.
 fn sync_off(gpiob: &device::GPIOB) {
-    gpiob.moder.modify(|_, w| w
-                       .moder6().input()
-                       .moder7().input());
-    gpiob.pupdr.modify(|_, w| w
-                       .pupdr6().pull_down()
-                       .pupdr7().pull_down());
+    gpiob
+        .moder
+        .modify(|_, w| w.moder6().input().moder7().input());
+    gpiob
+        .pupdr
+        .modify(|_, w| w.pupdr6().pull_down().pupdr7().pull_down());
 }
 
 /// Turns on sync outputs.
 fn sync_on(gpiob: &device::GPIOB) {
     // Configure PB6/PB7 for fairly sharp edges.
-    gpiob.ospeedr.modify(|_, w| w
-                         .ospeedr6().high_speed()
-                         .ospeedr7().high_speed());
+    gpiob
+        .ospeedr
+        .modify(|_, w| w.ospeedr6().high_speed().ospeedr7().high_speed());
     // Disable pullups/pulldowns.
-    gpiob.pupdr.modify(|_, w| w
-                       .pupdr6().floating()
-                       .pupdr7().floating());
+    gpiob
+        .pupdr
+        .modify(|_, w| w.pupdr6().floating().pupdr7().floating());
     // Configure PB6 as AF2 and PB7 as output.
     gpiob.afrl.modify(|_, w| w.afrl6().af2());
-    gpiob.moder.modify(|_, w| w
-                       .moder6().alternate()
-                       .moder7().output());
+    gpiob
+        .moder
+        .modify(|_, w| w.moder6().alternate().moder7().output());
 }
 
 /// Pattern for acquiring hardware resources loaned to an ISR in a static.
@@ -618,10 +664,9 @@ fn sync_on(gpiob: &device::GPIOB) {
 /// Also: if this is called before hardware is provisioned, implying that the
 /// IRQ was enabled too early.
 fn acquire_hw<T: Send>(lock: &SpinLock<Option<T>>) -> SpinLockGuard<T> {
-    SpinLockGuard::map(
-        lock.try_lock().expect("HW lock held at ISR"),
-        |o| o.as_mut().expect("ISR fired without HW available"),
-    )
+    SpinLockGuard::map(lock.try_lock().expect("HW lock held at ISR"), |o| {
+        o.as_mut().expect("ISR fired without HW available")
+    })
 }
 
 /// Possible states of the vertical retrace state machine.
@@ -672,7 +717,7 @@ fn vert_state() -> VState {
         0b00 => VState::Blank,
         0b01 => VState::Starting,
         0b11 => VState::Active,
-        _    => VState::Finishing,
+        _ => VState::Finishing,
     }
 }
 
@@ -683,11 +728,14 @@ fn set_vert_state(s: VState) {
 
 /// Utility for disabling one of our horizontal retrace timers. "Disabling" here
 /// means that we ensure its interrupts cannot fire and it's left in reset.
-fn disable_h_timer(nvic: &mut cortex_m::peripheral::NVIC,
-                   i: &device::Interrupt,
-                   rcc: &device::RCC,
-                   reset: impl FnOnce(&mut device::rcc::apb1rstr::W)
-                               -> &mut device::rcc::apb1rstr::W) {
+fn disable_h_timer(
+    nvic: &mut cortex_m::peripheral::NVIC,
+    i: &device::Interrupt,
+    rcc: &device::RCC,
+    reset: impl FnOnce(
+        &mut device::rcc::apb1rstr::W,
+    ) -> &mut device::rcc::apb1rstr::W,
+) {
     disable_irq(nvic, i.copy_hack());
     rcc.apb1rstr.modify(|_, w| reset(w));
     cortex_m::asm::dsb();
@@ -696,13 +744,17 @@ fn disable_h_timer(nvic: &mut cortex_m::peripheral::NVIC,
 
 /// Utility for configuring one of our horizontal retrace timers. It's set up
 /// and taken out of reset, but its interrupts are not enabled.
-fn configure_h_timer(timing: &timing::Timing,
-                     tim: &device::tim3::RegisterBlock,
-                     rcc: &device::RCC,
-                     enable_clock: impl FnOnce(&mut device::rcc::apb1enr::W)
-                               -> &mut device::rcc::apb1enr::W,
-                     leave_reset: impl FnOnce(&mut device::rcc::apb1rstr::W)
-                               -> &mut device::rcc::apb1rstr::W) {
+fn configure_h_timer(
+    timing: &timing::Timing,
+    tim: &device::tim3::RegisterBlock,
+    rcc: &device::RCC,
+    enable_clock: impl FnOnce(
+        &mut device::rcc::apb1enr::W,
+    ) -> &mut device::rcc::apb1enr::W,
+    leave_reset: impl FnOnce(
+        &mut device::rcc::apb1rstr::W,
+    ) -> &mut device::rcc::apb1rstr::W,
+) {
     rcc.apb1enr.modify(|_, w| enable_clock(w));
     cortex_m::asm::dsb();
     rcc.apb1rstr.modify(|_, w| leave_reset(w));
@@ -726,27 +778,38 @@ fn configure_h_timer(timing: &timing::Timing,
     // TODO: all the timer fields below should be 16 bits, but are 32.
     // See: https://github.com/stm32-rs/stm32-rs/issues/147
 
-    tim.arr.write(|w| w.arr().bits(timing.line_pixels as u32 - 1));
+    tim.arr
+        .write(|w| w.arr().bits(timing.line_pixels as u32 - 1));
 
     tim.ccr1.write(|w| w.ccr1().bits(timing.sync_pixels as u32));
-    tim.ccr2.write(|w| w.ccr2().bits(
-                (timing.sync_pixels
-                 + timing.back_porch_pixels - timing.video_lead) as u32
-                ));
-    tim.ccr3.write(|w| w.ccr3().bits(
-                (timing.sync_pixels
-                 + timing.back_porch_pixels + timing.video_pixels) as u32
-                ));
+    tim.ccr2.write(|w| {
+        w.ccr2().bits(
+            (timing.sync_pixels + timing.back_porch_pixels - timing.video_lead)
+                as u32,
+        )
+    });
+    tim.ccr3.write(|w| {
+        w.ccr3().bits(
+            (timing.sync_pixels
+                + timing.back_porch_pixels
+                + timing.video_pixels) as u32,
+        )
+    });
 
     tim.ccmr1_output.write(|w| {
         use crate::util::stm32 as device;
         use crate::util::stm32::VariantExt;
 
-        w.oc1m().variant(device::tim3::ccmr1_output::OC1MW::Pwm1)
-            .cc1s().variant(device::tim3::ccmr1_output::CC1SW::Output)
+        w.oc1m()
+            .variant(device::tim3::ccmr1_output::OC1MW::Pwm1)
+            .cc1s()
+            .variant(device::tim3::ccmr1_output::CC1SW::Output)
     });
 
-    tim.ccer.write(|w| w
-                   .cc1e().set_bit()
-                   .cc1p().bit(timing.hsync_polarity == Polarity::Negative));
+    tim.ccer.write(|w| {
+        w.cc1e()
+            .set_bit()
+            .cc1p()
+            .bit(timing.hsync_polarity == Polarity::Negative)
+    });
 }

@@ -80,18 +80,17 @@ pub enum Polarity {
     Negative = 1,
 }
 
-
 /// Industry standard 800x600 60Hz timing.
 ///
 /// This produces a 160MHz CPU clock speed for a 40MHz pixel clock.
 pub static SVGA_800_600: Timing = Timing {
     clock_config: stm32::ClockConfig {
-        crystal_hz: 8000000.0,// external crystal Hz
-        crystal_divisor: 4,   // divide down to 2Mhz
-        vco_multiplier: 160,  // multiply up to 320MHz VCO
+        crystal_hz: 8000000.0, // external crystal Hz
+        crystal_divisor: 4,    // divide down to 2Mhz
+        vco_multiplier: 160,   // multiply up to 320MHz VCO
         // divide by 2 for 160MHz CPU clock
         general_divisor: device::rcc::pllcfgr::PLLPW::DIV2,
-        pll48_divisor: 7,     // divide by 7 for 48MHz-ish SDIO clock
+        pll48_divisor: 7, // divide by 7 for 48MHz-ish SDIO clock
         // divide CPU clock by 1 for 160MHz AHB clock
         ahb_divisor: device::rcc::cfgr::HPREW::DIV1,
         // divide CPU clock by 4 for 40MHz APB1 clock.
@@ -105,16 +104,16 @@ pub static SVGA_800_600: Timing = Timing {
 
     add_cycles_per_pixel: 0,
 
-    line_pixels      : 1056,
-    sync_pixels      : 128,
+    line_pixels: 1056,
+    sync_pixels: 128,
     back_porch_pixels: 88,
-    video_lead       : 20,
-    video_pixels     : 800,
-    hsync_polarity   : Polarity::Positive,
+    video_lead: 20,
+    video_pixels: 800,
+    hsync_polarity: Polarity::Positive,
 
     vsync_start_line: 1,
-    vsync_end_line  : 1 + 4,
+    vsync_end_line: 1 + 4,
     video_start_line: 1 + 4 + 23,
-    video_end_line  : 1 + 4 + 23 + 600,
-    vsync_polarity  : Polarity::Positive,
+    video_end_line: 1 + 4 + 23 + 600,
+    vsync_polarity: Polarity::Positive,
 };

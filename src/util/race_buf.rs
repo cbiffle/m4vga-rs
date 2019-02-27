@@ -33,9 +33,7 @@ impl<R: 'static> RaceBuffer<R> {
     /// Creates a `RaceBuffer` from two static bands of rows.
     ///
     /// The bands need not be the same length.
-    pub fn new(segments: [&'static mut [R]; 2])
-        -> Self
-    {
+    pub fn new(segments: [&'static mut [R]; 2]) -> Self {
         RaceBuffer {
             segments,
             write_mark: 0.into(),
@@ -86,10 +84,9 @@ impl<'a, R: 'static> RaceReader<'a, R> {
     /// proving that they are calling from interrupt context. This ensures that
     /// this operation is atomic with respect to the `RaceWriter`, which must be
     /// used *outside* an interrupt.
-    pub fn take_line<'r, P>(&'r mut self,
-                            line_number: usize,
-                            _: &'r P) -> &'r R
-        where P: priority::InterruptPriority,
+    pub fn take_line<'r, P>(&'r mut self, line_number: usize, _: &'r P) -> &'r R
+    where
+        P: priority::InterruptPriority,
     {
         let rendered = self.load_writer_progress();
         let boundary = self.boundary();
@@ -102,12 +99,12 @@ impl<'a, R: 'static> RaceReader<'a, R> {
 
             // Safety: the RaceWriter will only vend mutable references to lines
             // above `rendered`.
-            unsafe {
-                &self.buf.as_ref().segments[seg_index][line_number]
-            }
+            unsafe { &self.buf.as_ref().segments[seg_index][line_number] }
         } else {
-            panic!("tearing: scanout reached {} but rendering only {}",
-                   line_number, rendered);
+            panic!(
+                "tearing: scanout reached {} but rendering only {}",
+                line_number, rendered
+            );
         }
     }
 }
@@ -140,8 +137,7 @@ impl<'a, R: 'static> RaceWriter<'a, R> {
     ///
     /// If the next scanline would run off the end of the final framebuffer
     /// band.
-    pub fn generate_line(&mut self,
-                         _: &priority::Thread) -> GenGuard<R> {
+    pub fn generate_line(&mut self, _: &priority::Thread) -> GenGuard<R> {
         let line_number = self.load_writer_progress();
         let boundary = self.boundary();
         let (seg_index, line_number) = if line_number < boundary {
@@ -169,7 +165,9 @@ impl<'a, R: 'static> RaceWriter<'a, R> {
     /// `RaceReader` (which can only be used from ISRs). This simplifies the
     /// implementation.
     pub fn reset(&mut self, _: &priority::Thread) {
-        unsafe { self.buf.as_ref() }.write_mark.store(0, Ordering::Relaxed)
+        unsafe { self.buf.as_ref() }
+            .write_mark
+            .store(0, Ordering::Relaxed)
     }
 }
 

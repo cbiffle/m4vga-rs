@@ -15,7 +15,6 @@ fn main() {
     println!("cargo:rerun-if-changed=memory.x");
     println!("cargo:rerun-if-changed=link-custom.x");
 
-
     cc::Build::new()
         .file("src/asm/unpack_1bpp.S")
         .file("src/asm/unpack_1bpp_overlay.S")

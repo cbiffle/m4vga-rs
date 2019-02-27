@@ -11,10 +11,10 @@
 #![no_std]
 #![no_main]
 
-#[cfg(feature = "panic-itm")]
-extern crate panic_itm;
 #[cfg(feature = "panic-halt")]
 extern crate panic_halt;
+#[cfg(feature = "panic-itm")]
+extern crate panic_itm;
 
 use stm32f4;
 
@@ -40,8 +40,8 @@ fn main() -> ! {
                     *t = pixel;
                     pixel ^= 0xFF;
                 }
-                ctx.target_range = 0..800;  // 800 pixels now valid
-                ctx.repeat_lines = 599;     // don't ask again this frame
+                ctx.target_range = 0..800; // 800 pixels now valid
+                ctx.repeat_lines = 599; // don't ask again this frame
             },
             // This closure contains the main loop of the program.
             |vga| {
@@ -50,7 +50,8 @@ fn main() -> ! {
                 vga.video_on();
                 // Spin forever!
                 loop {}
-            })
+            },
+        )
 }
 
 /// Wires up the PendSV handler expected by the driver.

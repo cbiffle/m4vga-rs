@@ -24,7 +24,7 @@ unsafe fn pre_init() {
     // `static` is undefined behavior!
     //
     // Between that and this whole function being `unsafe`, we are basically
-    // writing C. 
+    // writing C.
 
     // The cortex_m crate does not grant everyone ambient authority to mess with
     // the SCB. This is to its *immense credit* in the general case... but we're
@@ -45,13 +45,15 @@ unsafe fn pre_init() {
     // At reset, SYSCFG is out of reset but its interface is not being clocked.
     // Fix that.
     (*device::RCC::ptr())
-        .apb2enr.modify(|_, w| w.syscfgen().enabled());
+        .apb2enr
+        .modify(|_, w| w.syscfgen().enabled());
 
     asm::dmb(); // ensure clock's a-runnin' before we try to write to it
 
     // Remap SRAM112 to address 0.
     (*device::SYSCFG::ptr())
-        .memrm.write(|w| w.mem_mode().bits(0b11));
+        .memrm
+        .write(|w| w.mem_mode().bits(0b11));
 
     // Now, please. For all we know we're about to return into it!
     asm::dsb();
@@ -65,14 +67,15 @@ unsafe fn pre_init() {
     // naively increases interrupt latency by *tens of cycles*. To avoid paying
     // this penalty for ISRs that don't use FP, we also enable *lazy* context
     // save, which waits until the first FPU instruction.
-    (*cortex_m::peripheral::FPU::ptr())
-        .fpccr.write((1 << 31)      // automatic
-                     | (1 << 30)    // lazy
-                     );
+    (*cortex_m::peripheral::FPU::ptr()).fpccr.write(
+        (1 << 31)      // automatic
+                     | (1 << 30), // lazy
+    );
 
     // Turn SYSCFG back off for good measure.
     (*device::RCC::ptr())
-        .apb2enr.modify(|_, w| w.syscfgen().disabled());
+        .apb2enr
+        .modify(|_, w| w.syscfgen().disabled());
 
     // Primary data and bss are uninitialized, but will be initialized shortly.
     // Initialize our discontiguous regions.

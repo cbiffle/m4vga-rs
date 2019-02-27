@@ -1,7 +1,7 @@
 //! Bare metal spinlocks using atomic memory operations.
 
-use core::sync::atomic::{Ordering, AtomicBool};
 use core::cell::UnsafeCell;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 /// Protects a `T` using a spinlock to ensure that it can't be accessed
 /// concurrently or reentrantly.
@@ -83,9 +83,10 @@ struct LockBorrow<'a>(&'a AtomicBool);
 impl<'a, T: ?Sized> SpinLockGuard<'a, T> {
     /// Replaces a guard of `T` with a guard of some portion of `T`. This is
     /// essentially a projection operation. The original guard is lost.
-    pub fn map<U>(orig: SpinLockGuard<'a, T>, f: impl FnOnce(&mut T) -> &mut U)
-        -> SpinLockGuard<'a, U>
-    {
+    pub fn map<U>(
+        orig: SpinLockGuard<'a, T>,
+        f: impl FnOnce(&mut T) -> &mut U,
+    ) -> SpinLockGuard<'a, U> {
         let SpinLockGuard { locked, contents } = orig;
         SpinLockGuard {
             locked,

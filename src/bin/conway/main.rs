@@ -3,10 +3,10 @@
 #![no_std]
 #![no_main]
 
-#[cfg(feature = "panic-itm")]
-extern crate panic_itm;
 #[cfg(feature = "panic-halt")]
 extern crate panic_halt;
+#[cfg(feature = "panic-itm")]
+extern crate panic_itm;
 
 mod conway;
 
@@ -14,14 +14,14 @@ use core::sync::atomic::AtomicUsize;
 
 use stm32f4;
 
-use stm32f4::stm32f407::interrupt;
 use m4vga::util::rw_lock::ReadWriteLock;
+use stm32f4::stm32f407::interrupt;
 
 // this can go in the default SRAM
-static mut BUF0: [u32; 800 * 600 / 32] = [0; 800*600/32];
+static mut BUF0: [u32; 800 * 600 / 32] = [0; 800 * 600 / 32];
 // this needs to get placed because they won't both fit
 #[link_section = ".local_bss"]
-static mut BUF1: [u32; 800 * 600 / 32] = [0; 800*600/32];
+static mut BUF1: [u32; 800 * 600 / 32] = [0; 800 * 600 / 32];
 
 /// Demo entry point. Responsible for starting up the display driver and
 /// providing callbacks.
@@ -60,11 +60,11 @@ fn main() -> ! {
 
                 let offset = ln * (800 / 32);
                 m4vga::rast::bitmap_1::unpack(
-                    &fg[offset .. offset + (800 / 32)],
+                    &fg[offset..offset + (800 / 32)],
                     &clut,
-                    &mut tgt[0..800]
+                    &mut tgt[0..800],
                 );
-                ctx.target_range = 0..800;  // 800 pixels now valid
+                ctx.target_range = 0..800; // 800 pixels now valid
             },
             // This closure contains the main loop of the program.
             |vga| loop {
@@ -74,7 +74,8 @@ fn main() -> ! {
                 conway::step(&*fg.lock(), bg);
 
                 vga.video_on();
-            })
+            },
+        )
 }
 
 /// Wires up the PendSV handler expected by the driver.

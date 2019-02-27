@@ -14,9 +14,9 @@
 //! before we expect the actual interrupt, and idle the CPU. This ensures that
 //! the CPU and bus are quiet when the interrupt fires.
 
-use stm32f4::stm32f407 as device;
 use crate::acquire_hw;
 use crate::util::spin_lock::SpinLock;
+use stm32f4::stm32f407 as device;
 
 pub static SHOCK_TIMER: SpinLock<Option<device::TIM3>> = SpinLock::new(None);
 
@@ -39,9 +39,8 @@ pub const SHOCK_ABSORBER_SHIFT_CYCLES: u32 = 20;
 pub fn shock_absorber_isr() {
     // Acknowledge IRQ so it doesn't re-occur.
     acquire_hw(&SHOCK_TIMER)
-        .sr.modify(|_, w| w.cc2if().clear_bit());
+        .sr
+        .modify(|_, w| w.cc2if().clear_bit());
     // Idle the CPU until an interrupt arrives.
     cortex_m::asm::wfi()
 }
-
-
