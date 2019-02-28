@@ -2,6 +2,48 @@
 
 use num_traits::{one, zero, One, Zero};
 
+trait Vector {
+    type Element;
+    fn dot(self, other: Self) -> Self::Element;
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+pub struct Vec4<T>(pub T, pub T, pub T, pub T);
+
+pub type Vec4f = Vec4<f32>;
+
+impl<T> Vec4<T> {
+    pub fn project(self) -> Vec3<T>
+    where
+        T: Clone + core::ops::Div<Output = T>,
+    {
+        Vec3(
+            self.0 / self.3.clone(),
+            self.1 / self.3.clone(),
+            self.2 / self.3,
+        )
+    }
+}
+
+impl<T> Vector for Vec4<T>
+where
+    T: core::ops::Mul<Output = T> + core::ops::Add<Output = T>,
+{
+    type Element = T;
+    fn dot(self, other: Self) -> Self::Element {
+        self.0 * other.0
+            + self.1 * other.1
+            + self.2 * other.2
+            + self.3 * other.3
+    }
+}
+
+impl<T> From<(T, T, T, T)> for Vec4<T> {
+    fn from(q: (T, T, T, T)) -> Self {
+        Vec4(q.0, q.1, q.2, q.3)
+    }
+}
+
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Vec3<T>(pub T, pub T, pub T);
 
@@ -14,11 +56,13 @@ impl<T> Vec3<T> {
     {
         Vec2(self.0 / self.2.clone(), self.1 / self.2)
     }
-}
 
-trait Vector {
-    type Element;
-    fn dot(self, other: Self) -> Self::Element;
+    pub fn augment(self) -> Vec4<T>
+    where
+        T: One,
+    {
+        Vec4(self.0, self.1, self.2, one())
+    }
 }
 
 impl<T> Vector for Vec3<T>
@@ -28,6 +72,12 @@ where
     type Element = T;
     fn dot(self, other: Self) -> Self::Element {
         self.0 * other.0 + self.1 * other.1 + self.2 * other.2
+    }
+}
+
+impl<T> From<(T, T, T)> for Vec3<T> {
+    fn from(tri: (T, T, T)) -> Self {
+        Vec3(tri.0, tri.1, tri.2)
     }
 }
 
@@ -86,6 +136,69 @@ where
     type Element = T;
     fn dot(self, other: Self) -> Self::Element {
         self.0 * other.0 + self.1 * other.1
+    }
+}
+
+impl<T> From<(T, T)> for Vec2<T> {
+    fn from(pair: (T, T)) -> Self {
+        Vec2(pair.0, pair.1)
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Mat4<T>(pub Vec4<T>, pub Vec4<T>, pub Vec4<T>, pub Vec4<T>);
+
+pub type Mat4f = Mat4<f32>;
+
+impl<T> core::ops::Mul<Vec4<T>> for Mat4<T>
+where
+    T: core::ops::Mul<Output = T> + core::ops::Add<Output = T>,
+    Vec4<T>: Clone,
+{
+    type Output = Vec4<T>;
+    fn mul(self, v: Vec4<T>) -> Self::Output {
+        Vec4(
+            v.clone().dot(self.0),
+            v.clone().dot(self.1),
+            v.clone().dot(self.2),
+            v.dot(self.3),
+        )
+    }
+}
+
+impl<T> core::ops::Mul<Mat4<T>> for Mat4<T>
+where
+    T: core::ops::Mul<Output = T> + core::ops::Add<Output = T>,
+    Vec4<T>: Clone,
+{
+    type Output = Mat4<T>;
+    fn mul(self, v: Mat4<T>) -> Self::Output {
+        Mat4(
+            Vec4(
+                v.0.clone().dot(self.0.clone()),
+                v.1.clone().dot(self.0.clone()),
+                v.2.clone().dot(self.0.clone()),
+                v.3.clone().dot(self.0),
+            ),
+            Vec4(
+                v.0.clone().dot(self.1.clone()),
+                v.1.clone().dot(self.1.clone()),
+                v.2.clone().dot(self.1.clone()),
+                v.3.clone().dot(self.1),
+            ),
+            Vec4(
+                v.0.clone().dot(self.2.clone()),
+                v.1.clone().dot(self.2.clone()),
+                v.2.clone().dot(self.2.clone()),
+                v.3.clone().dot(self.2),
+            ),
+            Vec4(
+                v.0.dot(self.3.clone()),
+                v.1.dot(self.3.clone()),
+                v.2.dot(self.3.clone()),
+                v.3.dot(self.3),
+            ),
+        )
     }
 }
 
