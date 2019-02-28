@@ -11,7 +11,7 @@ extern crate panic_itm;
 use stm32f4;
 use stm32f4::stm32f407::interrupt;
 
-use m4vga::math::{Mat3f, Vec2};
+use m4vga::math::{Mat3f, Vec2, Project, Augment};
 use m4vga::priority;
 use m4vga::rast::direct;
 use m4vga::util::race_buf::RaceBuffer;
@@ -93,15 +93,12 @@ fn main() -> ! {
 
                     let m_ = m * Mat3f::translate(tx, ty) * Mat3f::scale(s, s);
 
-                    let top_left = (m_
-                        * Vec2(-cols / 2., -rows / 2.).augment())
-                    .project();
-                    let top_right = (m_
-                        * Vec2(cols / 2., -rows / 2.).augment())
-                    .project();
-                    let bot_left = (m_
-                        * Vec2(-cols / 2., rows / 2.).augment())
-                    .project();
+                    let top_left =
+                        (m_ * Vec2(-cols / 2., -rows / 2.).augment()).project();
+                    let top_right =
+                        (m_ * Vec2(cols / 2., -rows / 2.).augment()).project();
+                    let bot_left =
+                        (m_ * Vec2(-cols / 2., rows / 2.).augment()).project();
 
                     let xi = (top_right - top_left) * (1. / cols);
                     let yi = (bot_left - top_left) * (1. / rows);
