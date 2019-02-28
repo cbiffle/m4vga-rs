@@ -94,13 +94,13 @@ fn main() -> ! {
                     let m_ = m * Mat3f::translate(tx, ty) * Mat3f::scale(s, s);
 
                     let top_left = (m_
-                        * Vec2([-cols / 2., -rows / 2.]).augment())
+                        * Vec2(-cols / 2., -rows / 2.).augment())
                     .project();
                     let top_right = (m_
-                        * Vec2([cols / 2., -rows / 2.]).augment())
+                        * Vec2(cols / 2., -rows / 2.).augment())
                     .project();
                     let bot_left = (m_
-                        * Vec2([-cols / 2., rows / 2.]).augment())
+                        * Vec2(-cols / 2., rows / 2.).augment())
                     .project();
 
                     let xi = (top_right - top_left) * (1. / cols);
@@ -112,7 +112,7 @@ fn main() -> ! {
                         {
                             let mut pos = ybase;
                             for x in 0..WIDTH {
-                                buf[x] = tex_fetch(pos.0[0], pos.0[1]) as u8;
+                                buf[x] = tex_fetch(pos.0, pos.1) as u8;
                                 pos = pos + xi;
                             }
                         }

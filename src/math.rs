@@ -3,7 +3,7 @@
 use num_traits::{one, zero, One, Zero};
 
 #[derive(Copy, Clone, Debug, Default)]
-pub struct Vec3<T>(pub [T; 3]);
+pub struct Vec3<T>(pub T, pub T, pub T);
 
 pub type Vec3f = Vec3<f32>;
 
@@ -12,8 +12,7 @@ impl<T> Vec3<T> {
     where
         T: Clone + core::ops::Div<Output = T>,
     {
-        let [a, b, c] = self.0;
-        Vec2([a / c.clone(), b / c])
+        Vec2(self.0 / self.2.clone(), self.1 / self.2)
     }
 }
 
@@ -28,24 +27,22 @@ where
 {
     type Element = T;
     fn dot(self, other: Self) -> Self::Element {
-        let [a0, b0, c0] = self.0;
-        let [a1, b1, c1] = other.0;
-        a0 * a1 + b0 * b1 + c0 * c1
+        self.0 * other.0 + self.1 * other.1 + self.2 * other.2
     }
 }
 
 #[derive(Copy, Clone, Debug, Default)]
-pub struct Vec2<T>(pub [T; 2]);
+pub struct Vec2<T>(pub T, pub T);
 
 pub type Vec2f = Vec2<f32>;
+pub type Vec2i = Vec2<i32>;
 
 impl<T> Vec2<T> {
     pub fn augment(self) -> Vec3<T>
     where
         T: One,
     {
-        let [a, b] = self.0;
-        Vec3([a, b, one()])
+        Vec3(self.0, self.1, one())
     }
 }
 
@@ -56,9 +53,7 @@ where
     type Output = Vec2<T>;
 
     fn add(self, other: Self) -> Self {
-        let [a0, b0] = self.0;
-        let [a1, b1] = other.0;
-        Vec2([a0 + a1, b0 + b1])
+        Vec2(self.0 + other.0, self.1 + other.1)
     }
 }
 
@@ -69,9 +64,7 @@ where
     type Output = Vec2<T>;
 
     fn sub(self, other: Self) -> Self {
-        let [a0, b0] = self.0;
-        let [a1, b1] = other.0;
-        Vec2([a0 - a1, b0 - b1])
+        Vec2(self.0 - other.0, self.1 - other.1)
     }
 }
 
@@ -82,8 +75,7 @@ where
     type Output = Vec2<T>;
 
     fn mul(self, other: T) -> Self {
-        let [a0, b0] = self.0;
-        Vec2([a0 * other.clone(), b0 * other])
+        Vec2(self.0 * other.clone(), self.1 * other)
     }
 }
 
@@ -93,14 +85,12 @@ where
 {
     type Element = T;
     fn dot(self, other: Self) -> Self::Element {
-        let [a0, b0] = self.0;
-        let [a1, b1] = other.0;
-        a0 * a1 + b0 * b1
+        self.0 * other.0 + self.1 * other.1
     }
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct Mat3<T>(pub [Vec3<T>; 3]);
+pub struct Mat3<T>(pub Vec3<T>, pub Vec3<T>, pub Vec3<T>);
 
 pub type Mat3f = Mat3<f32>;
 
@@ -111,8 +101,7 @@ where
 {
     type Output = Vec3<T>;
     fn mul(self, v: Vec3<T>) -> Self::Output {
-        let [m0, m1, m2] = self.0;
-        Vec3([v.clone().dot(m0), v.clone().dot(m1), v.dot(m2)])
+        Vec3(v.clone().dot(self.0), v.clone().dot(self.1), v.dot(self.2))
     }
 }
 
@@ -123,21 +112,23 @@ where
 {
     type Output = Mat3<T>;
     fn mul(self, v: Mat3<T>) -> Self::Output {
-        let [b0, b1, b2] = self.0;
-        let [a0, a1, a2] = v.0;
-        Mat3([
-            Vec3([
-                a0.clone().dot(b0.clone()),
-                a1.clone().dot(b0.clone()),
-                a2.clone().dot(b0),
-            ]),
-            Vec3([
-                a0.clone().dot(b1.clone()),
-                a1.clone().dot(b1.clone()),
-                a2.clone().dot(b1),
-            ]),
-            Vec3([a0.dot(b2.clone()), a1.dot(b2.clone()), a2.dot(b2)]),
-        ])
+        Mat3(
+            Vec3(
+                v.0.clone().dot(self.0.clone()),
+                v.1.clone().dot(self.0.clone()),
+                v.2.clone().dot(self.0),
+            ),
+            Vec3(
+                v.0.clone().dot(self.1.clone()),
+                v.1.clone().dot(self.1.clone()),
+                v.2.clone().dot(self.1),
+            ),
+            Vec3(
+                v.0.dot(self.2.clone()),
+                v.1.dot(self.2.clone()),
+                v.2.dot(self.2),
+            ),
+        )
     }
 }
 
@@ -146,44 +137,44 @@ impl<T> Mat3<T> {
     where
         T: One + Zero,
     {
-        Mat3([
-            Vec3([one(), zero(), zero()]),
-            Vec3([zero(), one(), zero()]),
-            Vec3([zero(), zero(), one()]),
-        ])
+        Mat3(
+            Vec3(one(), zero(), zero()),
+            Vec3(zero(), one(), zero()),
+            Vec3(zero(), zero(), one()),
+        )
     }
 
     pub fn scale(x: T, y: T) -> Self
     where
         T: One + Zero,
     {
-        Mat3([
-            Vec3([x, zero(), zero()]),
-            Vec3([zero(), y, zero()]),
-            Vec3([zero(), zero(), one()]),
-        ])
+        Mat3(
+            Vec3(x, zero(), zero()),
+            Vec3(zero(), y, zero()),
+            Vec3(zero(), zero(), one()),
+        )
     }
 
     pub fn rotate_pre(sin: T, cos: T) -> Self
     where
         T: One + Zero + core::ops::Neg<Output = T> + Clone,
     {
-        Mat3([
-            Vec3([cos.clone(), sin.clone(), zero()]),
-            Vec3([-sin, cos, zero()]),
-            Vec3([zero(), zero(), one()]),
-        ])
+        Mat3(
+            Vec3(cos.clone(), sin.clone(), zero()),
+            Vec3(-sin, cos, zero()),
+            Vec3(zero(), zero(), one()),
+        )
     }
 
     pub fn translate(x: T, y: T) -> Self
     where
         T: One + Zero,
     {
-        Mat3([
-            Vec3([one(), zero(), zero()]),
-            Vec3([zero(), one(), zero()]),
-            Vec3([x, y, one()]),
-        ])
+        Mat3(
+            Vec3(one(), zero(), zero()),
+            Vec3(zero(), one(), zero()),
+            Vec3(x, y, one()),
+        )
     }
 }
 
