@@ -10,6 +10,56 @@ pub mod bit;
 use bit::BandBit;
 use core::mem::swap;
 
+/// A 1-bit-per-pixel framebuffer represented with 32 bits packed into each
+/// word.
+#[derive(Debug)]
+pub struct PackedBitBuffer<'a> {
+    mem: &'a mut [u32],
+    stride: usize,
+}
+
+/// A 1-bit-per-pixel framebuffer aliased in the bit-band region for efficient
+/// access.
+#[derive(Debug)]
+pub struct BitBuffer<'a> {
+    mem: &'a mut [BandBit],
+    stride: usize,
+}
+
+impl<'a> PackedBitBuffer<'a> {
+    pub fn new(mem: &'a mut [u32], stride: usize) -> Self {
+        PackedBitBuffer { mem, stride }
+    }
+
+    pub fn as_word_slice(&mut self) -> &[u32] {
+        self.mem
+    }
+
+    /// Borrows a packed buffer as its bit-band alias.
+    ///
+    /// # Panics
+    ///
+    /// If the buffer is not in the bit-band target region.
+    pub fn as_bits(&mut self) -> BitBuffer {
+        BitBuffer {
+            mem: bit::as_bits_mut(self.mem),
+            stride: self.stride * 32,
+        }
+    }
+}
+
+impl<'a> BitBuffer<'a> {
+    pub fn draw_line_unclipped(
+        &mut self,
+        x0: usize,
+        y0: usize,
+        x1: usize,
+        y1: usize,
+    ) {
+        draw_line_unclipped(x0, y0, x1, y1, self.mem, self.stride)
+    }
+}
+
 #[derive(Debug)]
 pub(crate) enum Direction {
     Horizontal,
@@ -81,7 +131,7 @@ pub(crate) unsafe fn draw_line_unclipped_unchecked(
 /// # Panics
 ///
 /// If either coordinate falls outside the buffer.
-pub(crate) fn draw_line_unclipped(
+pub fn draw_line_unclipped(
     mut x0: usize,
     mut y0: usize,
     mut x1: usize,
