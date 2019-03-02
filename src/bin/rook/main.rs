@@ -12,13 +12,14 @@ mod model;
 
 use gfx;
 
-use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 use stm32f4;
 
 use m4vga::math::{
     Augment, HomoTransform, Mat4f, Matrix, Project, Vec2, Vec2i, Vec3f,
 };
+use m4vga::rast::text_10x16::AChar;
 use m4vga::util::rw_lock::ReadWriteLock;
 use stm32f4::stm32f407::interrupt;
 
@@ -62,6 +63,30 @@ fn entry() -> ! {
         unsafe { &mut VBUF }
     };
 
+    let message = ReadWriteLock::new({
+        static mut BUF: [AChar; 81] = [AChar::from_ascii_char(b' '); 81];
+        unsafe { &mut BUF }
+    });
+
+    {
+        let mut message = message.lock_mut();
+        // chars/10:0         1         2         3         4
+        let text = b"2450 triangles made from 5151 segments, \
+                 drawn at 60Hz at 800x600, mixed mode -- ";
+        for (dst, &b) in message.iter_mut().zip(text as &[_]) {
+            *dst = AChar::from_ascii_char(b).with_foreground(0b101010);
+        }
+        for c in &mut message[0..15] {
+            *c = c.with_foreground(0b111111);
+        }
+        for c in &mut message[25..38] {
+            *c = c.with_foreground(0b111111).with_background(0b110000);
+        }
+        for c in &mut message[49..53] {
+            *c = c.with_foreground(0b000011);
+        }
+    }
+
     let clut = AtomicUsize::new(0xFF00);
 
     let mut projection = Mat4f::translate((800. / 2., 600. / 2., 0.).into())
@@ -73,6 +98,8 @@ fn entry() -> ! {
     let rot_step_y = Mat4f::rotate_y(0.02);
     let mut model = Mat4f::rotate_y(3.1415926 / 2.);
 
+    let fine_scroll = AtomicUsize::new(0);
+
     let edges = check_edges(&model::EDGES);
 
     // Give the driver its hardware resources...
@@ -82,27 +109,55 @@ fn entry() -> ! {
         // ... and provide a raster callback.
         .with_raster(
             |ln, tgt, ctx, _| {
-                if ln == 0 || ln == 500 {
-                    m4vga::rast::solid_color_fill(tgt, ctx, 800, 0xFF);
+                if ln == 0 || ln == 516 {
+                    m4vga::rast::solid_color_fill(tgt, ctx, 800, 0);
                     ctx.repeat_lines = 99;
                     return;
                 }
-                m4vga::measurement::sig_d_set();
 
-                let front = front.try_lock().expect("front unavail");
+                if ln < 500 {
+                    // Bitmapped wireframe display.
+                    m4vga::measurement::sig_d_set();
 
-                let offset = ln * (800 / 32);
-                m4vga::rast::bitmap_1::unpack(
-                    &front[offset..offset + (800 / 32)],
-                    &clut,
-                    &mut tgt[0..800],
-                );
-                ctx.target_range = 0..800; // 800 pixels now valid
-                m4vga::measurement::sig_d_clear();
+                    let front = front.try_lock().expect("front unavail");
+
+                    let offset = ln * (800 / 32);
+                    m4vga::rast::bitmap_1::unpack(
+                        &front[offset..offset + (800 / 32)],
+                        &clut,
+                        &mut tgt[0..800],
+                    );
+                    ctx.target_range = 0..800; // 800 pixels now valid
+                    m4vga::measurement::sig_d_clear();
+                } else {
+                    // Text display. This implements the "smooth" part of smooth
+                    // scrolling: honoring the `fine_scroll` value by shifting
+                    // the display to the left. We do this by adjusting our
+                    // `tgt` slice.
+                    let fs = fine_scroll.load(Ordering::Relaxed);
+                    m4vga::rast::text_10x16::unpack(
+                        &**message.try_lock().expect("message unavail"),
+                        m4vga::font_10x16::FONT.as_glyph_slices(),
+                        &mut tgt[16 - fs..],
+                        ln - 500,
+                        81,
+                    );
+                    ctx.target_range = 16..816;
+                }
             },
             // This closure contains the main loop of the program.
             |vga| loop {
                 vga.sync_to_vblank();
+                // This multi-step check-and-store sequence is okay because
+                // we're the only writer.
+                let fs = fine_scroll.load(Ordering::Acquire);
+                if fs == 9 {
+                    fine_scroll.store(0, Ordering::Release);
+                    message.lock_mut().rotate_left(1);
+                } else {
+                    fine_scroll.store(fs + 1, Ordering::Release);
+                }
+
                 m4vga::measurement::sig_c_set();
                 // Copy draw buffer to front buffer. We are racing here: we must
                 // release the lock on front before scanout starts, or we'll
