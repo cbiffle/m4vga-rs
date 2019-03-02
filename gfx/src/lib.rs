@@ -46,6 +46,13 @@ impl<'a> PackedBitBuffer<'a> {
             stride: self.stride * 32,
         }
     }
+
+    /// Clears the contents of the buffer to zeroes.
+    pub fn clear(&mut self) {
+        for word in self.mem.iter_mut() {
+            *word = 0
+        }
+    }
 }
 
 impl<'a> BitBuffer<'a> {
