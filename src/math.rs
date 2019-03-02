@@ -267,10 +267,10 @@ where
     type Output = Vec4<T>;
     fn mul(self, v: Vec4<T>) -> Self::Output {
         Vec4(
-            v.clone().dot(self.0),
-            v.clone().dot(self.1),
-            v.clone().dot(self.2),
-            v.dot(self.3),
+            self.0.dot(v.clone()),
+            self.1.dot(v.clone()),
+            self.2.dot(v.clone()),
+            self.3.dot(v),
         )
     }
 }
@@ -282,6 +282,7 @@ where
 {
     type Output = Mat4<T>;
     fn mul(self, v: Mat4<T>) -> Self::Output {
+        let v = v.transpose();
         Mat4(
             Vec4(
                 v.0.clone().dot(self.0.clone()),
@@ -334,6 +335,7 @@ where
 {
     type Output = Mat3<T>;
     fn mul(self, v: Mat3<T>) -> Self::Output {
+        let v = v.transpose();
         Mat3(
             Vec3(
                 v.0.clone().dot(self.0.clone()),
@@ -414,4 +416,44 @@ where
 {
     let delta = b.clone() - a.clone();
     a + (delta * amt)
+}
+
+pub trait Matrix {
+    type Element: Element;
+    type Row: Vector<Element = Self::Element>;
+
+    fn transpose(self) -> Self;
+}
+
+impl<T> Matrix for Mat3<T>
+where
+    T: Element,
+{
+    type Element = T;
+    type Row = Vec3<T>;
+
+    fn transpose(self) -> Self {
+        Mat3(
+            Vec3((self.0).0, (self.1).0, (self.2).0),
+            Vec3((self.0).1, (self.1).1, (self.2).1),
+            Vec3((self.0).2, (self.1).2, (self.2).2),
+        )
+    }
+}
+
+impl<T> Matrix for Mat4<T>
+where
+    T: Element,
+{
+    type Element = T;
+    type Row = Vec4<T>;
+
+    fn transpose(self) -> Self {
+        Mat4(
+            Vec4((self.0).0, (self.1).0, (self.2).0, (self.3).0),
+            Vec4((self.0).1, (self.1).1, (self.2).1, (self.3).1),
+            Vec4((self.0).2, (self.1).2, (self.2).2, (self.3).2),
+            Vec4((self.0).3, (self.1).3, (self.2).3, (self.3).3),
+        )
+    }
 }
