@@ -9,7 +9,11 @@ pub trait Vector: Sized + core::ops::Add<Self, Output = Self> + Zero {
 }
 
 pub trait Element:
-    Sized + core::ops::Mul<Output = Self> + core::ops::Add<Output = Self> + Zero
+    Sized
+    + core::ops::Mul<Output = Self>
+    + core::ops::Add<Output = Self>
+    + Zero
+    + One
 {
 }
 
@@ -36,6 +40,7 @@ impl<T> Element for T where
         + core::ops::Mul<Output = Self>
         + core::ops::Add<Output = Self>
         + Zero
+        + One
 {
 }
 
@@ -61,7 +66,7 @@ where
 
 impl<T> Vector for Vec4<T>
 where
-    T: core::ops::Mul<Output = T> + core::ops::Add<Output = T> + Zero,
+    T: Element,
 {
     type Element = T;
     fn dot(self, other: Self) -> Self::Element {
@@ -139,7 +144,7 @@ where
 
 impl<T> Vector for Vec3<T>
 where
-    T: core::ops::Mul<Output = T> + core::ops::Add<Output = T> + Zero,
+    T: Element,
 {
     type Element = T;
     fn dot(self, other: Self) -> Self::Element {
@@ -166,7 +171,7 @@ where
 
 impl<T> Zero for Vec3<T>
 where
-    T: Zero,
+    T: Element,
 {
     fn zero() -> Self {
         Vec3(zero(), zero(), zero())
@@ -227,7 +232,7 @@ where
 
 impl<T> Vector for Vec2<T>
 where
-    T: core::ops::Mul<Output = T> + core::ops::Add<Output = T> + Zero,
+    T: Element,
 {
     type Element = T;
     fn dot(self, other: Self) -> Self::Element {
@@ -422,6 +427,7 @@ pub trait Matrix {
     type Element: Element;
     type Row: Vector<Element = Self::Element>;
 
+    fn identity() -> Self;
     fn transpose(self) -> Self;
 }
 
@@ -431,6 +437,14 @@ where
 {
     type Element = T;
     type Row = Vec3<T>;
+
+    fn identity() -> Self {
+        Mat3(
+            Vec3(one(), zero(), zero()),
+            Vec3(zero(), one(), zero()),
+            Vec3(zero(), zero(), one()),
+        )
+    }
 
     fn transpose(self) -> Self {
         Mat3(
@@ -448,12 +462,107 @@ where
     type Element = T;
     type Row = Vec4<T>;
 
+    fn identity() -> Self {
+        Mat4(
+            Vec4(one(), zero(), zero(), zero()),
+            Vec4(zero(), one(), zero(), zero()),
+            Vec4(zero(), zero(), one(), zero()),
+            Vec4(zero(), zero(), zero(), one()),
+        )
+    }
+
     fn transpose(self) -> Self {
         Mat4(
             Vec4((self.0).0, (self.1).0, (self.2).0, (self.3).0),
             Vec4((self.0).1, (self.1).1, (self.2).1, (self.3).1),
             Vec4((self.0).2, (self.1).2, (self.2).2, (self.3).2),
             Vec4((self.0).3, (self.1).3, (self.2).3, (self.3).3),
+        )
+    }
+}
+
+/// Working with transformation matrices in homogeneous coordinates.
+pub trait HomoTransform: Matrix {
+    type Coord: Vector<Element = Self::Element>;
+
+    fn translate(coord: Self::Coord) -> Self;
+    fn scale(coord: Self::Coord) -> Self;
+}
+
+impl<T> HomoTransform for Mat4<T>
+where
+    T: Element,
+{
+    type Coord = Vec3<T>;
+
+    fn translate(coord: Self::Coord) -> Self {
+        Mat4(
+            Vec4(one(), zero(), zero(), coord.0),
+            Vec4(zero(), one(), zero(), coord.1),
+            Vec4(zero(), zero(), one(), coord.2),
+            Vec4(zero(), zero(), zero(), one()),
+        )
+    }
+
+    fn scale(coord: Self::Coord) -> Self {
+        Mat4(
+            Vec4(coord.0, zero(), zero(), zero()),
+            Vec4(zero(), coord.1, zero(), zero()),
+            Vec4(zero(), zero(), coord.2, zero()),
+            Vec4(zero(), zero(), zero(), one()),
+        )
+    }
+}
+
+impl<T> Mat4<T>
+where
+    T: Element + core::ops::Neg<Output = T> + Clone,
+{
+    pub fn rotate_y_pre(sin: T, cos: T) -> Self {
+        Mat4(
+            Vec4(cos.clone(), zero(), sin.clone(), zero()),
+            Vec4(zero(), one(), zero(), zero()),
+            Vec4(-sin, zero(), cos, zero()),
+            Vec4(zero(), zero(), zero(), one()),
+        )
+    }
+    pub fn rotate_z_pre(sin: T, cos: T) -> Self {
+        Mat4(
+            Vec4(cos.clone(), -sin.clone(), zero(), zero()),
+            Vec4(sin, cos, zero(), zero()),
+            Vec4(zero(), zero(), one(), zero()),
+            Vec4(zero(), zero(), zero(), one()),
+        )
+    }
+}
+
+impl Mat4f {
+    pub fn rotate_y(angle: f32) -> Self {
+        use libm::F32Ext;
+        Mat4::rotate_y_pre(angle.sin(), angle.cos())
+    }
+
+    pub fn rotate_z(angle: f32) -> Self {
+        use libm::F32Ext;
+        Mat4::rotate_z_pre(angle.sin(), angle.cos())
+    }
+
+    pub fn perspective(
+        left: f32,
+        top: f32,
+        right: f32,
+        bottom: f32,
+        near: f32,
+        far: f32,
+    ) -> Self {
+        let width = right - left;
+        let height = top - bottom;
+        let depth = far - near;
+        Mat4(
+            Vec4(2. * near / width, 0., (right + left) / width, 0.),
+            Vec4(0., 2. * near / height, (top + bottom) / height, 0.),
+            Vec4(0., 0., -(far + near) / depth, -2. * far * near / depth),
+            Vec4(0., 0., -1., 0.),
         )
     }
 }
