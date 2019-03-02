@@ -10,7 +10,7 @@ use crate::rast::{RasterCtx, TargetBuffer};
 use crate::timing::{Timing, MIN_CYCLES_PER_PIXEL};
 use crate::util::spin_lock::SpinLock;
 use crate::{
-    acquire_hw, vert_state, NextTransfer, HPSHARE, LINE, RASTER, TIMING,
+    acquire_hw, vert_state, NextTransfer, VState, HPSHARE, LINE, RASTER, TIMING,
 };
 
 /// Equivalent of `rast::TargetBuffer`, but as words to ensure alignment for
@@ -155,6 +155,10 @@ pub fn maintain_raster_isr() {
         // Smart pointers are great, but I can't borrow multiple paths from them
         // as I need to below, so...
         let state = &mut *state;
+
+        if vs == VState::Starting {
+            state.raster_ctx.repeat_lines = 0
+        }
 
         // Hold the TIMING lock for just long enough to copy some fields out.
         // At this point in the process we are racing SAV only. HState only uses
