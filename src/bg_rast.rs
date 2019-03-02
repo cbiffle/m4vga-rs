@@ -3,6 +3,7 @@
 
 use stm32f4::stm32f407 as device;
 
+use core::ops::Range;
 use core::sync::atomic::Ordering;
 
 use crate::priority;
@@ -136,7 +137,7 @@ pub fn maintain_raster_isr() {
         // the bus is quiet.
         if state.update_scan_buffer {
             update_scan_buffer(
-                state.raster_ctx.target_range.end,
+                state.raster_ctx.target_range.clone(),
                 &mut state.working_buffer,
             );
         }
@@ -183,19 +184,23 @@ pub fn maintain_raster_isr() {
 
 /// Copy the first `len_bytes` of `working` into the global scanout buffer for
 /// DMA.
-fn update_scan_buffer(len_bytes: usize, working: &mut WorkingBuffer) {
+fn update_scan_buffer(target_range: Range<usize>, working: &mut WorkingBuffer) {
     // We're going to move words, so round up to find the number of words to
     // move.
     //
     // Note: the user could pass in any value for `len_bytes`, but it will
     // get bounds-checked below when used as a slice index.
-    let count = (len_bytes + 3) / 4;
+    let count = ((target_range.end - target_range.start) + 3) / 4;
+    let offset = target_range.start / 4;
 
     // Safety: this might race DMA as written. That would cause display
     // tearing but nothing worse. We tolerate the potential for now.
     let scan = unsafe { &mut GLOBAL_SCANOUT_BUFFER };
 
-    crate::util::copy_words::copy_words(&working[..count], &mut scan[..count]);
+    crate::util::copy_words::copy_words(
+        &working[offset..offset + count],
+        &mut scan[..count],
+    );
 
     // Terminate with a word of black, to ensure that outputs return to
     // black level for hblank.
