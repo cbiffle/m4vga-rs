@@ -67,10 +67,45 @@ impl<'a> BitBuffer<'a> {
     }
 }
 
-#[derive(Debug)]
-pub(crate) enum Direction {
-    Horizontal,
-    Vertical,
+trait YDirection {
+    fn dmajor_dminor(dx: usize, dy: usize) -> (usize, usize);
+    fn major_minor_step(stride: isize, x_adv: isize) -> (isize, isize);
+}
+
+enum Horizontal {}
+enum Vertical {}
+
+impl YDirection for Horizontal {
+    fn dmajor_dminor(dx: usize, dy: usize) -> (usize, usize) {
+        (dx, dy)
+    }
+    fn major_minor_step(stride: isize, x_adv: isize) -> (isize, isize) {
+        (x_adv, stride)
+    }
+}
+
+impl YDirection for Vertical {
+    fn dmajor_dminor(dx: usize, dy: usize) -> (usize, usize) {
+        (dy, dx)
+    }
+    fn major_minor_step(stride: isize, x_adv: isize) -> (isize, isize) {
+        (stride, x_adv)
+    }
+}
+
+trait XDirection {
+    const X_ADV: isize;
+}
+
+enum Left {}
+enum Right {}
+
+impl XDirection for Left {
+    const X_ADV: isize = -1;
+}
+
+impl XDirection for Right {
+    const X_ADV: isize = 1;
 }
 
 /// Draws a line starting at bitband word `out` and progressing for `dx` and
@@ -84,33 +119,19 @@ pub(crate) enum Direction {
 /// `out` will be offset by `dx*x_adj` and by `dy*width_px` to find the last
 /// pixel in the line. All addresses along the line between the two points must
 /// be in the bounds of the mutable buffer we're writing into.
-pub(crate) unsafe fn draw_line_unclipped_unchecked(
+unsafe fn draw_line_unclipped_unchecked<X: XDirection, Y: YDirection>(
     mut out: *mut BandBit,
     dx: usize,
     dy: usize,
-    d: Direction,
     width_px: usize,
-    x_adv: isize,
 ) {
-    let (dmajor, dminor) = match d {
-        Direction::Horizontal => (dx, dy),
-        _ => (dy, dx),
-    };
-
-    let (minor_step, major_step) = match d {
-        Direction::Horizontal => (width_px as isize, x_adv),
-        _ => (x_adv, width_px as isize),
-    };
+    let (dmajor, dminor) = Y::dmajor_dminor(dx, dy);
+    let (major_step, minor_step) =
+        Y::major_minor_step(width_px as isize, X::X_ADV);
 
     let dminor2 = (dminor * 2) as isize;
     let dmajor2 = (dmajor * 2) as isize;
     let mut error = dminor2 - dmajor as isize;
-
-    #[cfg(test)]
-    {
-        eprintln!("major_step: {}", major_step);
-        eprintln!("minor_step: {}", minor_step);
-    }
 
     *out = BandBit::from(true);
 
@@ -121,8 +142,6 @@ pub(crate) unsafe fn draw_line_unclipped_unchecked(
         }
         error += dminor2;
         out = out.offset(major_step as isize);
-        #[cfg(test)]
-        eprintln!("{:p}", out);
         *out = BandBit::from(true);
     }
 }
@@ -160,28 +179,48 @@ pub fn draw_line_unclipped(
             .and_then(|row| row.checked_add(x))
             .unwrap()
     }
+
+    let start_offset = compute_offset(x0, y0, stride);
     assert!(
-        compute_offset(x0, y0, stride) < buf.len()
-            && compute_offset(x1, y1, stride) < buf.len()
+        start_offset < buf.len() && compute_offset(x1, y1, stride) < buf.len()
     );
 
     let dx = x1 as isize - x0 as isize; // may be negative
     let dy = y1 - y0; // nonnegative
 
-    let out = &mut buf[compute_offset(x0, y0, stride)];
+    let out = &mut buf[start_offset];
 
-    let (dx, x_adv) = if dx > 0 {
-        (dx as usize, 1)
+    if dx > 0 {
+        let dx = dx as usize;
+        if dx > dy {
+            unsafe {
+                draw_line_unclipped_unchecked::<Right, Horizontal>(
+                    out, dx, dy, stride,
+                )
+            }
+        } else {
+            unsafe {
+                draw_line_unclipped_unchecked::<Right, Vertical>(
+                    out, dx, dy, stride,
+                )
+            }
+        }
     } else {
-        (-dx as usize, -1)
-    };
-    let dir = if dx > dy {
-        Direction::Horizontal
-    } else {
-        Direction::Vertical
-    };
-
-    unsafe { draw_line_unclipped_unchecked(out, dx, dy, dir, stride, x_adv) }
+        let dx = -dx as usize;
+        if dx as usize > dy {
+            unsafe {
+                draw_line_unclipped_unchecked::<Left, Horizontal>(
+                    out, dx, dy, stride,
+                )
+            }
+        } else {
+            unsafe {
+                draw_line_unclipped_unchecked::<Left, Vertical>(
+                    out, dx, dy, stride,
+                )
+            }
+        }
+    }
 }
 
 #[cfg(test)]
