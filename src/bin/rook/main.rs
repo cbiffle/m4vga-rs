@@ -1,4 +1,9 @@
 //! 3D wireframe rook demo.
+//!
+//! # Theory of operation
+//!
+//! This demo combines a wireframe rendering of a tumbling chess piece with
+//! smooth-scrolling multi-colored text.
 
 #![no_std]
 #![no_main]
@@ -10,41 +15,25 @@ extern crate panic_itm;
 
 mod model;
 
-use gfx;
-
 use core::sync::atomic::{AtomicUsize, Ordering};
-
-use stm32f4;
-
+use gfx;
 use m4vga::math::{
     Augment, HomoTransform, Mat4f, Matrix, Project, Vec2, Vec2i, Vec3f,
 };
 use m4vga::rast::text_10x16::AChar;
 use m4vga::util::rw_lock::ReadWriteLock;
+use stm32f4;
 use stm32f4::stm32f407::interrupt;
 
-/// Demo entry point. Responsible for starting up the display driver and
-/// providing callbacks.
-#[allow(unused_parens)] // TODO bug in cortex_m_rt
-#[cortex_m_rt::entry]
-fn main() -> ! {
-    entry()
-}
-
+/// Demo entry point and main loop. This is factored out of `main` because the
+/// `cortex_m_rt` `entry` attribute mis-reports all error locations, making code
+/// hard to debug.
 fn entry() -> ! {
-    let front = ReadWriteLock::new({
-        // We can't fit two buffers in bitband-accessible SRAM, so this one
-        // lives in CCM. This means we can't render into it directly. Instead,
-        // we'll *copy* the contents of `DRAW_BUF` at each vblank.
-        #[link_section = ".local_bss"]
-        static mut FRONT_BUF: [u32; 800 * 600 / 32] = [0; 800 * 600 / 32];
+    // We need two framebuffers, which we'll call `front` and `back`.
 
-        // Safety: we can determine by lexical scoping that this is the only
-        // possible mutable reference to FRONT_BUF.
-        unsafe { &mut FRONT_BUF }
-    });
-
-    let mut bg: gfx::PackedBitBuffer<'static> = {
+    // The `back` buffer needs to live in the bitband target region of the
+    // address space, so that our line-drawing code can get to it.
+    let mut back = {
         // This buffer goes in default SRAM, which is where bitbanding can
         // reach.
         static mut DRAW_BUF: [u32; 800 * 600 / 32] = [0; 800 * 600 / 32];
@@ -57,50 +46,73 @@ fn entry() -> ! {
         )
     };
 
+    // We can't fit a second buffer in bitband-accessible RAM, so the `front`
+    // buffer goes in CCM. This means we can't render into it directly, and
+    // we'll have to *copy* pixels from `back` to `front` during vsync.
+    //
+    // Because `front` is shared between the render loop and the rasterizer, we
+    // wrap it in a lock.
+    let front = ReadWriteLock::new({
+        #[link_section = ".local_bss"]
+        static mut FRONT_BUF: [u32; 800 * 600 / 32] = [0; 800 * 600 / 32];
+
+        // Safety: we can determine by lexical scoping that this is the only
+        // possible mutable reference to FRONT_BUF.
+        unsafe { &mut FRONT_BUF }
+    });
+
+    // Each vertex in the model is shared by multiple triangles. It would
+    // therefore be wasteful to transform each triangle separately. Instead, we
+    // save time by transforming all the unique vertices and writing their
+    // screen-space projected versions into `vertex_buf` each frame.
     let vertex_buf: &mut [Vec2i; model::VERTEX_COUNT] = {
+        // This doesn't need to go into any particular sort of RAM.
         static mut VBUF: [Vec2i; model::VERTEX_COUNT] =
             [Vec2(0, 0); model::VERTEX_COUNT];
+        // Safety: we can determine by lexical scoping that this is the only
+        // possible mutable reference to VBUF.
         unsafe { &mut VBUF }
     };
 
-    let message = ReadWriteLock::new({
-        static mut BUF: [AChar; 81] = [AChar::from_ascii_char(b' '); 81];
-        unsafe { &mut BUF }
-    });
+    // Foreground and background colors for the bitmap display:
+    let clut = AtomicUsize::new(0xFF_00);
 
-    {
-        let mut message = message.lock_mut();
-        // chars/10:0         1         2         3         4
-        let text = b"2450 triangles made from 5151 segments, \
-                 drawn at 60Hz at 800x600, mixed mode -- ";
-        for (dst, &b) in message.iter_mut().zip(text as &[_]) {
-            *dst = AChar::from_ascii_char(b).with_foreground(0b101010);
-        }
-        for c in &mut message[0..15] {
-            *c = c.with_foreground(0b111111);
-        }
-        for c in &mut message[25..38] {
-            *c = c.with_foreground(0b111111).with_background(0b110000);
-        }
-        for c in &mut message[49..53] {
-            *c = c.with_foreground(0b000011);
-        }
-    }
-
-    let clut = AtomicUsize::new(0xFF00);
-
+    // Base projection matrix, will be updated to animate.
     let mut projection = Mat4f::translate((800. / 2., 600. / 2., 0.).into())
         * Mat4f::scale((600. / 2., 600. / 2., 1.).into())
         * Mat4f::perspective(-10., -10., 10., 10., 20., 100.)
         * Mat4f::translate((0., 0., -75.).into());
 
-    let rot_step_z = Mat4f::rotate_z(0.01);
-    let rot_step_y = Mat4f::rotate_y(0.02);
+    // Base model matrix, will be updated to animate.
     let mut model = Mat4f::rotate_y(3.1415926 / 2.);
 
-    let fine_scroll = AtomicUsize::new(0);
+    // Rotation steps around each animated axis.
+    let rot_step_z = Mat4f::rotate_z(0.01);
+    let rot_step_y = Mat4f::rotate_y(0.02);
 
+    // This scans the static `EDGES` array at startup, doing all bounds checking
+    // in advance, and returns a slice of `CheckedEdge`s that are cheaper to
+    // draw.
     let edges = check_edges(&model::EDGES);
+
+    // Text time!
+
+    // We need somewhere to store the text that we scroll across the screen. We
+    // will update it in-place, so it needs to be mutable. It's shared between
+    // the render loop and the text rasterizer, so it needs to be in a lock.
+    let message = ReadWriteLock::new({
+        static mut BUF: [AChar; 81] = [AChar::from_ascii_char(b' '); 81];
+        // Safety: lexical scoping, unique reference, etc.
+        let mess = unsafe { &mut BUF };
+        fill_message(mess);
+        mess
+    });
+
+    // Values between 1 and 9 slide rendered text by that many pixels to the
+    // left. This is how we achieve smooth scrolling: we increment this to 9,
+    // and then move the entire message left by one character while resetting
+    // this to zero.
+    let fine_scroll = AtomicUsize::new(0);
 
     // Give the driver its hardware resources...
     m4vga::take_hardware()
@@ -110,6 +122,8 @@ fn entry() -> ! {
         .with_raster(
             |ln, tgt, ctx, _| {
                 if ln == 0 || ln == 516 {
+                    // The top and bottom of the screen use the cheapest
+                    // rasterizer to draw empty space, to save CPU.
                     m4vga::rast::solid_color_fill(tgt, ctx, 800, 0);
                     ctx.repeat_lines = 99;
                     return;
@@ -148,8 +162,10 @@ fn entry() -> ! {
             // This closure contains the main loop of the program.
             |vga| loop {
                 vga.sync_to_vblank();
-                // This multi-step check-and-store sequence is okay because
-                // we're the only writer.
+
+                // Update the fine-scrolling state machine.  This multi-step
+                // check-and-store sequence is okay because we're the only
+                // writer.
                 let fs = fine_scroll.load(Ordering::Acquire);
                 if fs == 9 {
                     fine_scroll.store(0, Ordering::Release);
@@ -163,12 +179,12 @@ fn entry() -> ! {
                 // release the lock on front before scanout starts, or we'll
                 // panic.
                 m4vga::util::copy_words::copy_words(
-                    bg.as_word_slice(),
+                    back.as_word_slice(),
                     &mut **front.lock_mut(),
                 );
                 m4vga::measurement::sig_c_clear();
 
-                bg.clear();
+                back.clear();
 
                 transform_vertices(
                     projection * model,
@@ -177,9 +193,10 @@ fn entry() -> ! {
                 );
 
                 m4vga::measurement::sig_c_set();
-                draw_edges(&mut bg, edges, vertex_buf);
+                draw_edges(&mut back, edges, vertex_buf);
                 m4vga::measurement::sig_c_clear();
 
+                // Animate:
                 model = model * rot_step_y.clone();
                 projection = projection * rot_step_z.clone();
 
@@ -188,16 +205,31 @@ fn entry() -> ! {
         )
 }
 
+/// Fills in the default message.
+fn fill_message(message: &mut [AChar; 81]) {
+    // chars/10:0         1         2         3         4
+    let text = b"2450 triangles made from 5151 segments, \
+             drawn at 60Hz at 800x600, mixed mode -- ";
+    for (dst, &b) in message.iter_mut().zip(text as &[_]) {
+        *dst = AChar::from_ascii_char(b).with_foreground(0b101010);
+    }
+    for c in &mut message[0..15] {
+        *c = c.with_foreground(0b111111);
+    }
+    for c in &mut message[25..38] {
+        *c = c.with_foreground(0b111111).with_background(0b110000);
+    }
+    for c in &mut message[49..53] {
+        *c = c.with_foreground(0b000011);
+    }
+}
+
 /// Transforms a vertex slice and projects to 2D.
 fn transform_vertices(m: Mat4f, vertices: &[Vec3f], out: &mut [Vec2i]) {
     for (dst, src) in out.iter_mut().zip(vertices) {
         let v = (m * src.augment()).project();
         *dst = (v.0 as i32, v.1 as i32).into();
     }
-}
-
-fn in_bounds(x: i32, y: i32) -> bool {
-    x >= 0 && x < 800 && y >= 0 && y < 600
 }
 
 /// Draws wireframe edges into `buf`.
@@ -222,6 +254,10 @@ fn draw_edges(
     }
 }
 
+/// Maps an address from the zero-based alias of SRAM112 into its native space
+/// starting at `0x2000_0000`. This is required to use bitbanding.
+///
+/// Since the input slice is mutably borrowed, the alias is safe.
 fn sram112_alias<T>(slice: &mut [T]) -> &mut [T] {
     const SRAM_SIZE: usize = 112 * 1024;
 
@@ -241,10 +277,17 @@ fn sram112_alias<T>(slice: &mut [T]) -> &mut [T] {
     }
 }
 
+/// An edge whose vertex table indices have been bounds-checked.
+///
+/// If you're coding inside this module you could create one of these yourself.
+/// Please don't. Use `check_edges` below.
 #[derive(Copy, Clone, Debug)]
 #[repr(transparent)]
 struct CheckedEdge((usize, usize));
 
+/// Scans the edge table, performing all bounds checks in advance. If they
+/// succeed, casts the slice to a slice of `CheckedEdge`, which allows us to
+/// skip table bounds checking during rendering.
 fn check_edges(raw: &[(usize, usize)]) -> &[CheckedEdge] {
     for &(s, e) in raw {
         assert!(s < model::VERTEX_COUNT && e < model::VERTEX_COUNT);
@@ -254,6 +297,8 @@ fn check_edges(raw: &[(usize, usize)]) -> &[CheckedEdge] {
     unsafe { core::mem::transmute(raw) }
 }
 
+/// Gets the vertices at either end of `edge` in `vtable`. This is the routine
+/// that implements the cheap bounds checking for `CheckedEdge`.
 fn vertex_lookup<'v>(
     vtable: &'v [Vec2i; model::VERTEX_COUNT],
     edge: &CheckedEdge,
@@ -265,6 +310,13 @@ fn vertex_lookup<'v>(
             vtable.get_unchecked((edge.0).1),
         )
     }
+}
+
+/// Entry point for runtime.
+#[allow(unused_parens)] // TODO bug in cortex_m_rt
+#[cortex_m_rt::entry]
+fn main() -> ! {
+    entry()
 }
 
 /// Wires up the PendSV handler expected by the driver.
