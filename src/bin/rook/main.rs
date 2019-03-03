@@ -17,9 +17,7 @@ mod model;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 use gfx;
-use m4vga::math::{
-    Augment, HomoTransform, Mat4f, Matrix, Project, Vec2, Vec2i, Vec3f,
-};
+use m4vga::math::{Augment, HomoTransform, Mat4f, Project, Vec2, Vec2i, Vec3f};
 use m4vga::rast::text_10x16::AChar;
 use m4vga::util::rw_lock::ReadWriteLock;
 use stm32f4;
