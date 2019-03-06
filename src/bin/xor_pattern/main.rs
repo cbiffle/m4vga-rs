@@ -71,18 +71,21 @@ fn main() -> ! {
 
 /// Wires up the PendSV handler expected by the driver.
 #[cortex_m_rt::exception]
+#[link_section = ".ramcode"]
 fn PendSV() {
     m4vga::pendsv_raster_isr()
 }
 
 /// Wires up the TIM3 handler expected by the driver.
 #[interrupt]
+#[link_section = ".ramcode"]
 fn TIM3() {
     m4vga::tim3_shock_isr()
 }
 
 /// Wires up the TIM4 handler expected by the driver.
 #[interrupt]
+#[link_section = ".ramcode"]
 fn TIM4() {
     m4vga::tim4_horiz_isr()
 }

@@ -139,12 +139,14 @@ fn u32_as_u8_mut(r: &mut Row) -> &mut Row8 {
 
 /// Wires up the PendSV handler expected by the driver.
 #[cortex_m_rt::exception]
+#[link_section = ".ramcode"]
 fn PendSV() {
     m4vga::pendsv_raster_isr()
 }
 
 /// Wires up the TIM3 handler expected by the driver.
 #[interrupt]
+#[link_section = ".ramcode"]
 fn TIM3() {
     m4vga::tim3_shock_isr()
 }
