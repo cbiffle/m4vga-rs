@@ -433,8 +433,8 @@ impl<T> Mat3<T> {
         T: One + Zero + core::ops::Neg<Output = T> + Clone,
     {
         Mat3(
-            Vec3(cos.clone(), sin.clone(), zero()),
-            Vec3(-sin, cos, zero()),
+            Vec3(cos.clone(), -sin.clone(), zero()),
+            Vec3(sin, cos, zero()),
             Vec3(zero(), zero(), one()),
         )
     }
@@ -444,9 +444,9 @@ impl<T> Mat3<T> {
         T: One + Zero,
     {
         Mat3(
-            Vec3(one(), zero(), zero()),
-            Vec3(zero(), one(), zero()),
-            Vec3(x, y, one()),
+            Vec3(one(), zero(), x),
+            Vec3(zero(), one(), y),
+            Vec3(zero(), zero(), one()),
         )
     }
 }
@@ -489,7 +489,7 @@ where
 {
     type Output = Vec3<T>;
     fn mul(self, v: Vec3<T>) -> Self::Output {
-        Vec3(v.clone().dot(self.0), v.clone().dot(self.1), v.dot(self.2))
+        Vec3(self.0.dot(v.clone()), self.1.dot(v.clone()), self.2.dot(v))
     }
 }
 
