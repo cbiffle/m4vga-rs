@@ -16,12 +16,30 @@ extern crate panic_itm;
 mod model;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
+use cortex_m::singleton;
+use stm32f4;
+use stm32f4::stm32f407::interrupt;
+
 use gfx;
 use m4vga::math::{Augment, HomoTransform, Mat4f, Project, Vec2, Vec2i, Vec3f};
 use m4vga::rast::text_10x16::AChar;
 use m4vga::util::rw_lock::ReadWriteLock;
-use stm32f4;
-use stm32f4::stm32f407::interrupt;
+
+// We can't fit a second buffer in bitband-accessible RAM, so the `front` buffer
+// goes in CCM. This means we can't render into it directly using bitbanding,
+// and we'll have to *copy* pixels from `back` to `front` during vsync.
+//
+// Because `front` is shared between the render loop and the rasterizer, we wrap
+// it in a lock.
+#[link_section = ".local_bss"]
+static FRONT_BUF: ReadWriteLock<[u32; 800 * 600 / 32]> =
+    ReadWriteLock::new([0; 800 * 600 / 32]);
+
+// We need somewhere to store the text that we scroll across the screen. We will
+// update it in-place, so it needs to be mutable. It's shared between the render
+// loop and the text rasterizer, so it needs to be in a lock.
+static MESSAGE: ReadWriteLock<[AChar; 81]> =
+    ReadWriteLock::new([AChar::from_ascii_char(b' '); 81]);
 
 /// Demo entry point and main loop. This is factored out of `main` because the
 /// `cortex_m_rt` `entry` attribute mis-reports all error locations, making code
@@ -30,47 +48,20 @@ fn entry() -> ! {
     // We need two framebuffers, which we'll call `front` and `back`.
 
     // The `back` buffer needs to live in the bitband target region of the
-    // address space, so that our line-drawing code can get to it.
-    let mut back = {
-        // This buffer goes in default SRAM, which is where bitbanding can
-        // reach.
-        static mut DRAW_BUF: [u32; 800 * 600 / 32] = [0; 800 * 600 / 32];
-
-        // Safety: we can determine by lexical scoping that this is the only
-        // possible mutable reference to DRAW_BUF.
-        gfx::PackedBitBuffer::new(
-            sram112_alias(unsafe { &mut DRAW_BUF }),
-            800 / 32,
-        )
-    };
-
-    // We can't fit a second buffer in bitband-accessible RAM, so the `front`
-    // buffer goes in CCM. This means we can't render into it directly, and
-    // we'll have to *copy* pixels from `back` to `front` during vsync.
-    //
-    // Because `front` is shared between the render loop and the rasterizer, we
-    // wrap it in a lock.
-    let front = ReadWriteLock::new({
-        #[link_section = ".local_bss"]
-        static mut FRONT_BUF: [u32; 800 * 600 / 32] = [0; 800 * 600 / 32];
-
-        // Safety: we can determine by lexical scoping that this is the only
-        // possible mutable reference to FRONT_BUF.
-        unsafe { &mut FRONT_BUF }
-    });
+    // address space, so that our line-drawing code can get to it. An array
+    // without any section attribute goes there by default per our linker
+    // script.
+    let back =
+        singleton!(: [u32; 800 * 600 / 32] = [0; 800 * 600 / 32]).unwrap();
+    let mut back = gfx::PackedBitBuffer::new(sram112_alias(back), 800 / 32);
 
     // Each vertex in the model is shared by multiple triangles. It would
     // therefore be wasteful to transform each triangle separately. Instead, we
     // save time by transforming all the unique vertices and writing their
     // screen-space projected versions into `vertex_buf` each frame.
-    let vertex_buf: &mut [Vec2i; model::VERTEX_COUNT] = {
-        // This doesn't need to go into any particular sort of RAM.
-        static mut VBUF: [Vec2i; model::VERTEX_COUNT] =
-            [Vec2(0, 0); model::VERTEX_COUNT];
-        // Safety: we can determine by lexical scoping that this is the only
-        // possible mutable reference to VBUF.
-        unsafe { &mut VBUF }
-    };
+    let vertex_buf = singleton!(
+        : [Vec2i; model::VERTEX_COUNT] = [Vec2(0, 0); model::VERTEX_COUNT])
+    .unwrap();
 
     // Foreground and background colors for the bitmap display:
     let clut = AtomicUsize::new(0xFF_00);
@@ -95,16 +86,7 @@ fn entry() -> ! {
 
     // Text time!
 
-    // We need somewhere to store the text that we scroll across the screen. We
-    // will update it in-place, so it needs to be mutable. It's shared between
-    // the render loop and the text rasterizer, so it needs to be in a lock.
-    let message = ReadWriteLock::new({
-        static mut BUF: [AChar; 81] = [AChar::from_ascii_char(b' '); 81];
-        // Safety: lexical scoping, unique reference, etc.
-        let mess = unsafe { &mut BUF };
-        fill_message(mess);
-        mess
-    });
+    fill_message(&mut *MESSAGE.lock_mut());
 
     // Values between 1 and 9 slide rendered text by that many pixels to the
     // left. This is how we achieve smooth scrolling: we increment this to 9,
@@ -131,7 +113,7 @@ fn entry() -> ! {
                     // Bitmapped wireframe display.
                     m4vga::measurement::sig_d_set();
 
-                    let front = front.try_lock().expect("front unavail");
+                    let front = FRONT_BUF.try_lock().expect("front unavail");
 
                     let offset = ln * (800 / 32);
                     m4vga::rast::bitmap_1::unpack(
@@ -148,7 +130,7 @@ fn entry() -> ! {
                     // `tgt` slice.
                     let fs = fine_scroll.load(Ordering::Relaxed);
                     m4vga::rast::text_10x16::unpack(
-                        &**message.try_lock().expect("message unavail"),
+                        &*MESSAGE.try_lock().expect("message unavail"),
                         m4vga::font_10x16::FONT.as_glyph_slices(),
                         &mut tgt[16 - fs..],
                         ln - 500,
@@ -167,7 +149,7 @@ fn entry() -> ! {
                 let fs = fine_scroll.load(Ordering::Acquire);
                 if fs == 9 {
                     fine_scroll.store(0, Ordering::Release);
-                    message.lock_mut().rotate_left(1);
+                    MESSAGE.lock_mut().rotate_left(1);
                 } else {
                     fine_scroll.store(fs + 1, Ordering::Release);
                 }
@@ -178,7 +160,7 @@ fn entry() -> ! {
                 // panic.
                 m4vga::util::copy_words::copy_words(
                     back.as_word_slice(),
-                    &mut **front.lock_mut(),
+                    &mut *FRONT_BUF.lock_mut(),
                 );
                 m4vga::measurement::sig_c_clear();
 
