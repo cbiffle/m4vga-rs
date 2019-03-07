@@ -82,7 +82,7 @@ fn entry() -> ! {
     // This scans the static `EDGES` array at startup, doing all bounds checking
     // in advance, and returns a slice of `CheckedEdge`s that are cheaper to
     // draw.
-    let edges = check_edges(&model::EDGES);
+    let edges = checked::VertexIndex::check_edges(&model::EDGES);
 
     // Text time!
 
@@ -218,12 +218,13 @@ fn transform_vertices(m: Mat4f, vertices: &[Vec3f], out: &mut [Vec2i]) {
 /// connecting points in the cloud as specified in `edge_table`.
 fn draw_edges(
     buf: &mut gfx::PackedBitBuffer,
-    edge_table: &[CheckedEdge],
+    edge_table: &[(checked::VertexIndex, checked::VertexIndex)],
     vertex_table: &[Vec2i; model::VERTEX_COUNT],
 ) {
     let mut bits = buf.as_bits();
-    for edge in edge_table {
-        let (p0, p1) = vertex_lookup(vertex_table, edge);
+    for (start, end) in edge_table {
+        let p0 = start.lookup(vertex_table);
+        let p1 = end.lookup(vertex_table);
 
         bits.draw_line_unclipped(
             p0.0 as usize,
@@ -257,38 +258,46 @@ fn sram112_alias<T>(slice: &mut [T]) -> &mut [T] {
     }
 }
 
-/// An edge whose vertex table indices have been bounds-checked.
-///
-/// If you're coding inside this module you could create one of these yourself.
-/// Please don't. Use `check_edges` below.
-#[derive(Copy, Clone, Debug)]
-#[repr(transparent)]
-struct CheckedEdge((usize, usize));
+mod checked {
+    use super::model;
 
-/// Scans the edge table, performing all bounds checks in advance. If they
-/// succeed, casts the slice to a slice of `CheckedEdge`, which allows us to
-/// skip table bounds checking during rendering.
-fn check_edges(raw: &[(usize, usize)]) -> &[CheckedEdge] {
-    for &(s, e) in raw {
-        assert!(s < model::VERTEX_COUNT && e < model::VERTEX_COUNT);
-    }
-    // Safety: CheckedEdge is a transparent struct that simply adds type
-    // information.
-    unsafe { core::mem::transmute(raw) }
-}
+    /// An index that has been verified to be less than `model::VERTEX_COUNT`.
+    /// This lets us safely skip bounds checking when the index is repeatedly
+    /// reused.
+    ///
+    /// Because the field is private, code outside this module can't violate
+    /// this invariant (without `unsafe` shenanigans, of course.)
+    ///
+    /// (In a glorious future of const-generics we could generalize this
+    /// concept, but for now, this is what I need.)
+    #[derive(Copy, Clone, Debug)]
+    #[repr(transparent)]
+    pub struct VertexIndex(usize);
 
-/// Gets the vertices at either end of `edge` in `vtable`. This is the routine
-/// that implements the cheap bounds checking for `CheckedEdge`.
-fn vertex_lookup<'v>(
-    vtable: &'v [Vec2i; model::VERTEX_COUNT],
-    edge: &CheckedEdge,
-) -> (&'v Vec2i, &'v Vec2i) {
-    // Safety: CheckedEdge means the indices have already been checked.
-    unsafe {
-        (
-            vtable.get_unchecked((edge.0).0),
-            vtable.get_unchecked((edge.0).1),
-        )
+    impl VertexIndex {
+        pub fn check_edges(
+            raw: &[(usize, usize)],
+        ) -> &[(VertexIndex, VertexIndex)] {
+            // Verify that all indices in `raw` are valid vertex indices.
+            for (i, &(start, end)) in raw.iter().enumerate() {
+                assert!(
+                    start < model::VERTEX_COUNT && end < model::VERTEX_COUNT,
+                    "Vertex index out of range at edge table [{}]",
+                    i
+                );
+            }
+            // Safety: `VertexIndex` is `repr(transparent)`, so we can
+            // reinterpret a collection of `usize` safely. We have just verified
+            // `VertexIndex`'s invariant above.
+            unsafe { core::mem::transmute(raw) }
+        }
+
+        pub fn lookup<T>(self, table: &[T; model::VERTEX_COUNT]) -> &T {
+            // Safety: the only way for someone outside this module to obtain a
+            // `VertexIndex` is through `check_edges`, which has already
+            // performed the bounds check.
+            unsafe { table.get_unchecked(self.0) }
+        }
     }
 }
 
