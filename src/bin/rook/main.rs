@@ -272,16 +272,17 @@ mod checked {
     /// concept, but for now, this is what I need.)
     #[derive(Copy, Clone, Debug)]
     #[repr(transparent)]
-    pub struct VertexIndex(usize);
+    pub struct VertexIndex(u16);
 
     impl VertexIndex {
         pub fn check_edges(
-            raw: &[(usize, usize)],
+            raw: &[(u16, u16)],
         ) -> &[(VertexIndex, VertexIndex)] {
             // Verify that all indices in `raw` are valid vertex indices.
             for (i, &(start, end)) in raw.iter().enumerate() {
                 assert!(
-                    start < model::VERTEX_COUNT && end < model::VERTEX_COUNT,
+                    usize::from(start) < model::VERTEX_COUNT
+                        && usize::from(end) < model::VERTEX_COUNT,
                     "Vertex index out of range at edge table [{}]",
                     i
                 );
@@ -296,7 +297,7 @@ mod checked {
             // Safety: the only way for someone outside this module to obtain a
             // `VertexIndex` is through `check_edges`, which has already
             // performed the bounds check.
-            unsafe { table.get_unchecked(self.0) }
+            unsafe { table.get_unchecked(usize::from(self.0)) }
         }
     }
 }

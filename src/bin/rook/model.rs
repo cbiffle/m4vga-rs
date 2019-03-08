@@ -1944,7 +1944,7 @@ pub static VERTICES: [Vec3f; VERTEX_COUNT] = [
     Vec3(5.610576152801514, -4.305147171020508, 15.18050765991211),
 ];
 
-pub static EDGES: [(usize, usize); 5151] = [
+pub static EDGES: [(u16, u16); 5151] = [
     (0, 1),
     (0, 2),
     (0, 3),
