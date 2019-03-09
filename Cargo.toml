@@ -45,6 +45,10 @@ version = "0.6.0"
 
 [build-dependencies]
 cc = "1.0"
+stlmunge = { path = "stlmunge" }
+
+[patch.crates-io]
+ordered-float = { git = 'https://github.com/cbiffle/rust-ordered-float', branch = 'no-std' }
 
 # Setting these prevents Cargo from trying to test or bench the library crate,
 # which `cargo fix` tries to do automatically -- so this enables `cargo fix`.
