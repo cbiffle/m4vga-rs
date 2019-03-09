@@ -5,7 +5,7 @@ use std::io::{self, Read, Seek, Write};
 use byteorder::{LittleEndian, ReadBytesExt};
 use ordered_float::OrderedFloat;
 
-const Q: f32 = 10_000.;
+const Q: f32 = 10.;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 struct Point3([OrderedFloat<f32>; 3]);

@@ -188,7 +188,7 @@ fn entry() -> ! {
 /// Fills in the default message.
 fn fill_message(message: &mut [AChar; 81]) {
     // chars/10:0         1         2         3         4
-    let text = b"2450 triangles made from 5151 segments, \
+    let text = b"3450 triangles made from 4700 segments, \
              drawn at 60Hz at 800x600, mixed mode -- ";
     for (dst, &b) in message.iter_mut().zip(text as &[_]) {
         *dst = AChar::from_ascii_char(b).with_foreground(0b101010);
