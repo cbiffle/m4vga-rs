@@ -158,7 +158,6 @@ where
     }
 }
 
-
 impl<T> core::ops::Add for Vec3<T>
 where
     T: core::ops::Add<Output = T>,
