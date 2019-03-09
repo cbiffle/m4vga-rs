@@ -1,3 +1,13 @@
+//! Binary STL converter for wireframe graphics.
+//!
+//! This library can read a binary STL model and produce a minimized set of
+//! edges needed to represent the model as a transparent wireframe.
+//!
+//! As STL uses an unordered bag-of-triangles approach with no connectivity
+//! information, we perform some basic quantization and regularization on the
+//! mesh before producing output. This has the side effect of reducing the
+//! amount of drawing required.
+
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::{self, Read, Seek, Write};
@@ -5,35 +15,46 @@ use std::io::{self, Read, Seek, Write};
 use byteorder::{LittleEndian, ReadBytesExt};
 use ordered_float::OrderedFloat;
 
+/// Quantization factor. Coordinates are multiplied by this before rounding, so
+/// we preserve about one fractional decimal digit per trailing zero in this
+/// number.
 const Q: f32 = 10.;
 
+type Of32 = OrderedFloat<f32>;
+
+/// A basic representation of a point.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-struct Point3([OrderedFloat<f32>; 3]);
+struct Point3(Of32, Of32, Of32);
 
 impl Point3 {
     /// Forces the point onto a quantized grid, to merge points that are nearby
     /// but not exactly identical.
     fn quantized(self) -> Self {
-        fn q(v: OrderedFloat<f32>) -> OrderedFloat<f32> {
+        fn q(v: Of32) -> Of32 {
             OrderedFloat((v.0 * Q).round() / Q)
         }
 
-        Point3([q(self.0[0]), q(self.0[1]), q(self.0[2])])
+        Point3(q(self.0), q(self.1), q(self.2))
     }
 
+    /// Loads a point from binary STL representation.
     fn read_from(mut input: impl Read) -> io::Result<Self> {
-        Ok(Point3([
+        Ok(Point3(
             OrderedFloat(input.read_f32::<LittleEndian>()?),
             OrderedFloat(input.read_f32::<LittleEndian>()?),
             OrderedFloat(input.read_f32::<LittleEndian>()?),
-        ]))
+        ))
     }
 }
 
+/// An edge in the connectivity graph. Each edge connects two vertices, which
+/// are referenced by unique IDs.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Debug)]
 struct Edge(usize, usize);
 
 impl Edge {
+    /// Make sure the edge connects a lower-numbered point to a higher-numbered
+    /// point. This makes detecting duplicate edges much easier.
     fn normalize(self) -> Self {
         if self.0 < self.1 {
             self
@@ -42,31 +63,47 @@ impl Edge {
         }
     }
 
+    /// If this edge connects a vertex to itself, there's no need to draw it.
     fn is_trivial(&self) -> bool {
         self.0 == self.1
     }
 }
 
+/// Process binary STL file from `input` and produce a `Munged` structure
+/// describing the results.
 fn munge(mut input: impl Read + Seek) -> io::Result<Munged> {
-    // skip header
+    // The first 80 bytes of a binary STL file are a text header. Skip it.
     input.seek(io::SeekFrom::Current(80))?;
+    // Next we have the triangle count.
     let tri_count = input.read_u32::<LittleEndian>()?;
     eprintln!("tri_count = {}", tri_count);
 
+    // Point-to-ID mapping.
     let mut unique_points: HashMap<Point3, usize> = HashMap::default();
+    // Points ordered by ID.
     let mut ordered_points = vec![];
+    // Edges we've discovered to be non-trivial.
     let mut unique_edges: HashSet<Edge> = HashSet::default();
+    // Diagnostic counters.
     let mut trivial_edges = 0;
     let mut duplicate_edges = 0;
 
     for _ in 0..tri_count {
-        // Skip normal vector.
+        // The first 3 floats are the normal vector for the triangle, which we
+        // don't use. Skip it.
         input.seek(io::SeekFrom::Current(3 * 4))?;
 
         let mut indices = [0; 3];
         for index in indices.iter_mut() {
+            // Read the next triangle vertex and quantize it before we can
+            // mistakenly use it raw.
             let mut p = Point3::read_from(&mut input)?.quantized();
-            p.0[2].0 -= 20.; // legacy Z shift, TODO
+            // This Z-shift drops the rook into the XY plane so that its center
+            // of mass is near the origin. It's a side effect of the model
+            // having been designed for 3D printing, and could be automated by
+            // centering the mesh. (TODO)
+            (p.2).0 -= 20.;
+            // Record the existing index for `p` or assign a new one.
             *index = *unique_points.entry(p).or_insert_with(|| {
                 let n = ordered_points.len();
                 ordered_points.push(p);
@@ -74,16 +111,14 @@ fn munge(mut input: impl Read + Seek) -> io::Result<Munged> {
             });
         }
 
+        // The final two bytes are an "attributes" field that has no meaning to
+        // us. Skip it.
         input.seek(io::SeekFrom::Current(2))?;
 
-        let edges = [
-            Edge(indices[0], indices[1]),
-            Edge(indices[1], indices[2]),
-            Edge(indices[2], indices[0]),
-        ];
+        // Generate three edges between the three vertex indices.
+        for &(si, ei) in &[(0, 1), (1, 2), (2, 0)] {
+            let edge = Edge(indices[si], indices[ei]).normalize();
 
-        for edge in &edges {
-            let edge = edge.normalize();
             if edge.is_trivial() {
                 trivial_edges += 1;
                 continue;
@@ -101,11 +136,14 @@ fn munge(mut input: impl Read + Seek) -> io::Result<Munged> {
     eprintln!("trivial_edges: {}", trivial_edges);
     eprintln!("duplicate_edges: {}", duplicate_edges);
 
+    let mut unique_edges: Vec<_> = unique_edges.into_iter().collect();
+    unique_edges.sort_unstable();
+
     Ok(Munged {
         trivial_edges,
         duplicate_edges,
         points: ordered_points,
-        edges: unique_edges.into_iter().collect(),
+        edges: unique_edges,
     })
 }
 
@@ -116,12 +154,16 @@ struct Munged {
     pub edges: Vec<Edge>,
 }
 
+/// Reads a binary STL file on `input` and produces Rust code representing its
+/// vertices and connectivity on `output`.
 pub fn generate(
     input: impl Read + Seek,
     mut output: impl Write,
 ) -> io::Result<()> {
-    let mut munged = munge(input)?;
+    let munged = munge(input)?;
 
+    writeln!(output, "// {} trivial edges removed", munged.trivial_edges)?;
+    writeln!(output, "// {} duplicate edges removed", munged.duplicate_edges)?;
     writeln!(output, "use m4vga::math::{{Vec3, Vec3f}};")?;
 
     writeln!(
@@ -134,7 +176,7 @@ pub fn generate(
         writeln!(
             output,
             "    Vec3({}f32, {}f32, {}f32),",
-            p.0[0], p.0[1], p.0[2]
+            p.0, p.1, p.2,
         )?;
     }
     writeln!(output, "];")?;
@@ -144,7 +186,6 @@ pub fn generate(
         "pub static EDGES: [(u16, u16); {}] = [",
         munged.edges.len()
     )?;
-    munged.edges.sort_unstable();
     for Edge(start, end) in munged.edges {
         writeln!(output, "    ({}, {}),", start, end)?;
     }
