@@ -571,6 +571,8 @@ pub type Vec4f = Vec4<f32>;
 
 /// Convenient shorthand for `Vec2<i32>`.
 pub type Vec2i = Vec2<i32>;
+/// Convenient shorthand for `Vec3<i32>`.
+pub type Vec3i = Vec3<i32>;
 
 /// Convenient shorthand for `Mat3<f32>`.
 pub type Mat3f = Mat3<f32>;
