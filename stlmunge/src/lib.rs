@@ -163,7 +163,11 @@ pub fn generate(
     let munged = munge(input)?;
 
     writeln!(output, "// {} trivial edges removed", munged.trivial_edges)?;
-    writeln!(output, "// {} duplicate edges removed", munged.duplicate_edges)?;
+    writeln!(
+        output,
+        "// {} duplicate edges removed",
+        munged.duplicate_edges
+    )?;
     writeln!(output, "use m4vga::math::{{Vec3, Vec3f}};")?;
 
     writeln!(
@@ -173,11 +177,7 @@ pub fn generate(
     )?;
     writeln!(output, "pub static VERTICES: [Vec3f; VERTEX_COUNT] = [")?;
     for p in munged.points {
-        writeln!(
-            output,
-            "    Vec3({}f32, {}f32, {}f32),",
-            p.0, p.1, p.2,
-        )?;
+        writeln!(output, "    Vec3({}f32, {}f32, {}f32),", p.0, p.1, p.2)?;
     }
     writeln!(output, "];")?;
 

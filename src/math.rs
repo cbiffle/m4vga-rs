@@ -127,7 +127,8 @@ impl<T> From<(T, T, T)> for Vec3<T> {
 }
 
 impl<T> Vec3<T>
-where T: Clone + core::ops::Mul<Output = T> + core::ops::Sub<Output = T>,
+where
+    T: Clone + core::ops::Mul<Output = T> + core::ops::Sub<Output = T>,
 {
     pub fn cross(self, other: Self) -> Self {
         fn get_120<T: Clone>(v: &Vec3<T>) -> Vec3<T> {
@@ -162,7 +163,6 @@ where
         Vec3(self.0 - other.0, self.1 - other.1, self.2 - other.2)
     }
 }
-
 
 impl<T> Vector for Vec3<T>
 where
