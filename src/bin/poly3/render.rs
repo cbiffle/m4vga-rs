@@ -5,8 +5,8 @@ use arrayvec::ArrayVec;
 
 use m4vga::math::Vec3i;
 
-pub const MAX_TRIS: usize = 16;
-pub const MAX_STATES: usize = MAX_TRIS;
+pub const MAX_TRIS: usize = 12;
+pub const MAX_STATES: usize = 2 * MAX_TRIS;
 
 /// Description of a triangle relative to a vertex buffer.
 #[derive(Copy, Clone, Debug)]
@@ -143,7 +143,14 @@ impl Raster {
                 &vertices[tri.vertex_indices[1]],
                 &vertices[tri.vertex_indices[2]],
             );
+
             if let Some(tri_ref) = tri_ref {
+                let edge1 = *tri_ref.1 - *tri_ref.0;
+                let edge2 = *tri_ref.2 - *tri_ref.0;
+                if edge1.cross(edge2).2 < 0 {
+                    continue;
+                }
+
                 let (top, bot) = tri_ref.to_states(tri.color);
                 self.tris[states] = top;
                 self.pending.push(StateIndex::checked(states).unwrap());
@@ -163,7 +170,8 @@ impl Raster {
     }
 
     pub fn step<F>(&mut self, scanline: usize, mut body: F)
-        where F: FnMut(Range<usize>, u8),
+    where
+        F: FnMut(Range<usize>, u8),
     {
         // Move any tris that start on this scanline from pending to active.
         // Because the tris are sorted descending by top_y, the relevant ones
@@ -180,8 +188,10 @@ impl Raster {
         // Process the pixel range for each active tri, stepping it forward.
         for i in &self.active {
             let tri = i.index_mut(&mut self.tris);
-            let color = tri.color;
-            body(tri.evaluate(scanline), color);
+            let range = tri.evaluate(scanline);
+            if range.end > range.start {
+                body(range, tri.color);
+            }
         }
 
         // Retire tris that are ending.
@@ -203,9 +213,15 @@ impl<'a> TriRef<'a> {
     /// `v0`, `v1`, `v2` should be a clockwise circuit around the triangle.
     ///
     /// The triangle should be camera-facing.
-    pub fn normalize(mut v0: &'a Vec3i, mut v1: &'a Vec3i, mut v2: &'a Vec3i) -> Option<Self> {
+    pub fn normalize(
+        mut v0: &'a Vec3i,
+        mut v1: &'a Vec3i,
+        mut v2: &'a Vec3i,
+    ) -> Option<Self> {
         // Reject edge-on triangles. Simplifies the rest of our math.
-        if v0.1 == v1.1 && v1.1 == v2.1 { return None; }
+        if v0.1 == v1.1 && v1.1 == v2.1 {
+            return None;
+        }
 
         if v2.1 <= v0.1 {
             // Rotate clockwise until normalized.
@@ -219,7 +235,7 @@ impl<'a> TriRef<'a> {
                 mem::swap(&mut v0, &mut v1);
                 mem::swap(&mut v1, &mut v2);
             }
-        } 
+        }
 
         Some(TriRef(v0, v1, v2))
     }
@@ -284,5 +300,5 @@ impl<'a> TriRef<'a> {
             };
             (top, Some(bot))
         }
-    }            
+    }
 }

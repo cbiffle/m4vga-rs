@@ -6,22 +6,19 @@ extern crate panic_halt;
 #[cfg(feature = "panic-itm")]
 extern crate panic_itm;
 
+use cortex_m::singleton;
 use stm32f4;
 use stm32f4::stm32f407::interrupt;
 
+use m4vga::math::{Augment, HomoTransform, Mat4f, Project, Vec3, Vec3f, Vec3i};
 use m4vga::util::rw_lock::ReadWriteLock;
-use m4vga::math::{Vec3, Vec3i};
 
 mod render;
 
 use render::{Raster, Tri};
 
 extern "C" {
-    fn fast_fill(
-        start: *mut u8,
-        end: *const u8,
-        value: u8,
-    );
+    fn fast_fill(start: *mut u8, end: *const u8, value: u8);
 }
 
 fn fill(range: &mut [u8], value: u8) {
@@ -38,26 +35,67 @@ fn main() -> ! {
     entry()
 }
 
-static VERTICES: &[Vec3i] = &[
-    Vec3(40, 40, 0),
-    Vec3(700, 200, 0),
-    Vec3(300, 500, 0),
-    Vec3(400, 500, 0),
-    Vec3(400, 40, 0),
+const VERTEX_COUNT: usize = 8;
+
+static VERTICES: [Vec3f; VERTEX_COUNT] = [
+    Vec3(-10., 10., 10.),
+    Vec3(10., 10., 10.),
+    Vec3(10., -10., 10.),
+    Vec3(-10., -10., 10.),
+    Vec3(-10., 10., -10.),
+    Vec3(10., 10., -10.),
+    Vec3(10., -10., -10.),
+    Vec3(-10., -10., -10.),
 ];
 
 static TRIS: &[Tri] = &[
     Tri {
         vertex_indices: [0, 1, 2],
-        color: 0b00_00_11,
+        color: 0b000011,
     },
     Tri {
-        vertex_indices: [2, 1, 3],
-        color: 0b00_11_00,
+        vertex_indices: [0, 2, 3],
+        color: 0b000011,
     },
     Tri {
-        vertex_indices: [0, 4, 1],
-        color: 0b11_00_00,
+        vertex_indices: [1, 5, 6],
+        color: 0b110000,
+    },
+    Tri {
+        vertex_indices: [1, 6, 2],
+        color: 0b110000,
+    },
+    Tri {
+        vertex_indices: [4, 0, 3],
+        color: 0b001100,
+    },
+    Tri {
+        vertex_indices: [4, 3, 7],
+        color: 0b001100,
+    },
+    Tri {
+        vertex_indices: [5, 4, 7],
+        color: 0b110011,
+    },
+    Tri {
+        vertex_indices: [5, 7, 6],
+        color: 0b110011,
+    },
+    Tri {
+        vertex_indices: [4, 5, 1],
+        color: 0b111100,
+    },
+    Tri {
+        vertex_indices: [4, 1, 0],
+        color: 0b111100,
+    },
+    Tri {
+        vertex_indices: [3, 2, 6],
+        color: 0b001111,
+    },
+    Tri {
+        vertex_indices: [3, 6, 7],
+        color: 0b001111,
     },
 ];
 
@@ -65,6 +103,17 @@ static RASTER: ReadWriteLock<Option<Raster>> = ReadWriteLock::new(None);
 
 fn entry() -> ! {
     *RASTER.lock_mut() = Some(Raster::default());
+
+    let transformed =
+        singleton!(: [Vec3i; VERTEX_COUNT] = [Vec3(0,0,0); VERTEX_COUNT])
+            .unwrap();
+
+    let projection = Mat4f::translate((400., 300., 0.).into())
+        * Mat4f::scale((300., 300., 1.).into())
+        * Mat4f::perspective(-10., -10., 10., 10., 20., 100.)
+        * Mat4f::translate((0., 0., -50.).into());
+
+    let mut frame = 0;
 
     // Give the driver its hardware resources...
     m4vga::take_hardware()
@@ -75,11 +124,13 @@ fn entry() -> ! {
             // The raster callback is invoked on every horizontal retrace to
             // provide new pixels. Here, we just scribble a test pattern into
             // the target buffer.
+            #[link_section = ".ramcode"]
             |ln, tgt, ctx, _| {
                 m4vga::measurement::sig_d_set();
                 let mut left_margin = 800;
                 let mut right_margin = 0;
-                RASTER.try_lock_mut()
+                RASTER
+                    .try_lock_mut()
                     .expect("rast access")
                     .as_mut()
                     .unwrap()
@@ -98,8 +149,16 @@ fn entry() -> ! {
             },
             |vga| loop {
                 vga.sync_to_vblank();
-                RASTER.lock_mut().as_mut().unwrap().reset(TRIS, VERTICES);
+                let model = Mat4f::rotate_y(frame as f32 * 0.1)
+                    * Mat4f::rotate_z(core::f32::consts::PI * 0.125);
+                let modelview = projection * model;
+                for (t, s) in transformed.iter_mut().zip(VERTICES.iter()) {
+                    let Vec3(x, y, z) = (modelview * s.augment()).project();
+                    *t = Vec3(x as i32, y as i32, z as i32);
+                }
+                RASTER.lock_mut().as_mut().unwrap().reset(TRIS, transformed);
                 vga.video_on();
+                frame += 1;
             },
         )
 }
