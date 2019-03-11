@@ -27,6 +27,11 @@ fn build_assembly_sources() {
         .file("src/bin/xor_pattern/pattern.S")
         .compile("libxor_pattern.a");
     println!("cargo:rerun-if-changed=src/bin/xor_pattern/pattern.S");
+
+    cc::Build::new()
+        .file("src/bin/poly3/fill.S")
+        .compile("libpoly3_fill.a");
+    println!("cargo:rerun-if-changed=src/bin/poly3/fill.S");
 }
 
 fn linker_script_plumbing() {
