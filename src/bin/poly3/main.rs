@@ -150,7 +150,7 @@ fn entry() -> ! {
             |vga| loop {
                 vga.sync_to_vblank();
                 let model = Mat4f::rotate_y(frame as f32 * 0.1)
-                    * Mat4f::rotate_z(core::f32::consts::PI * 0.125);
+                    * Mat4f::rotate_z(frame as f32 * 0.05);
                 let modelview = projection * model;
                 for (t, s) in transformed.iter_mut().zip(VERTICES.iter()) {
                     let Vec3(x, y, z) = (modelview * s.augment()).project();

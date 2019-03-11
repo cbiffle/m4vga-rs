@@ -1,4 +1,3 @@
-use core::mem;
 use core::ops::Range;
 
 use arrayvec::ArrayVec;
@@ -214,30 +213,22 @@ impl<'a> TriRef<'a> {
     ///
     /// The triangle should be camera-facing.
     pub fn normalize(
-        mut v0: &'a Vec3i,
-        mut v1: &'a Vec3i,
-        mut v2: &'a Vec3i,
+        v0: &'a Vec3i,
+        v1: &'a Vec3i,
+        v2: &'a Vec3i,
     ) -> Option<Self> {
         // Reject edge-on triangles. Simplifies the rest of our math.
         if v0.1 == v1.1 && v1.1 == v2.1 {
             return None;
         }
 
-        if v2.1 <= v0.1 {
-            // Rotate clockwise until normalized.
-            while v2.1 <= v0.1 {
-                mem::swap(&mut v2, &mut v0);
-                mem::swap(&mut v0, &mut v1);
-            }
-        } else if v1.1 < v0.1 {
-            // Rotate counter-clockwise.
-            while v1.1 < v0.1 {
-                mem::swap(&mut v0, &mut v1);
-                mem::swap(&mut v1, &mut v2);
-            }
+        if v2.1 <= v0.1 && v2.1 < v1.1 {
+            Some(TriRef(v2, v0, v1))
+        } else if v1.1 <= v2.1 && v1.1 < v0.1 {
+            Some(TriRef(v1, v2, v0))
+        } else {
+            Some(TriRef(v0, v1, v2))
         }
-
-        Some(TriRef(v0, v1, v2))
     }
 
     fn to_states(self, color: u8) -> (TriState, Option<TriState>) {
