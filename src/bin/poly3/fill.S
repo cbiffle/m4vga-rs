@@ -2,7 +2,7 @@
 
 @ Fills a contiguous span of bytes with a repeating byte.  This is exactly
 @ equivalent to memset.
-.section .ramcode.fill,"ax",%progbits
+.section .ramcode,"ax",%progbits
 .balign 4
 .global fast_fill
 .thumb_func
