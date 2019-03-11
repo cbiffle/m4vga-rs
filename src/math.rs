@@ -126,6 +126,44 @@ impl<T> From<(T, T, T)> for Vec3<T> {
     }
 }
 
+impl<T> Vec3<T>
+where T: Clone + core::ops::Mul<Output = T> + core::ops::Sub<Output = T>,
+{
+    pub fn cross(self, other: Self) -> Self {
+        fn get_120<T: Clone>(v: &Vec3<T>) -> Vec3<T> {
+            Vec3(v.1.clone(), v.2.clone(), v.0.clone())
+        }
+        fn get_201<T: Clone>(v: &Vec3<T>) -> Vec3<T> {
+            Vec3(v.2.clone(), v.0.clone(), v.1.clone())
+        }
+
+        get_120(&self) * get_201(&other) - get_201(&self) * get_120(&other)
+    }
+}
+
+impl<T> core::ops::Mul<Vec3<T>> for Vec3<T>
+where
+    T: core::ops::Mul<Output = T> + Clone,
+{
+    type Output = Vec3<T>;
+
+    fn mul(self, other: Vec3<T>) -> Self {
+        Vec3(self.0 * other.0, self.1 * other.1, self.2 * other.2)
+    }
+}
+
+impl<T> core::ops::Sub<Vec3<T>> for Vec3<T>
+where
+    T: core::ops::Sub<Output = T> + Clone,
+{
+    type Output = Vec3<T>;
+
+    fn sub(self, other: Vec3<T>) -> Self {
+        Vec3(self.0 - other.0, self.1 - other.1, self.2 - other.2)
+    }
+}
+
+
 impl<T> Vector for Vec3<T>
 where
     T: Element,
