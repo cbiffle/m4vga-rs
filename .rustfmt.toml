@@ -1,4 +1,7 @@
 max_width = 80
+use_field_init_shorthand = true
+use_try_shorthand = true
+edition = "2018"
 
 # hard_tabs = false
 # tab_spaces = 4
@@ -44,11 +47,8 @@ max_width = 80
 # match_block_trailing_comma = false
 # blank_lines_upper_bound = 1
 # blank_lines_lower_bound = 0
-# edition = "2015"
 # version = "One"
 # merge_derives = true
-# use_try_shorthand = false
-# use_field_init_shorthand = false
 # force_explicit_abi = true
 # condense_wildcard_suffixes = false
 # color = "Auto"
