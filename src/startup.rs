@@ -31,19 +31,22 @@ unsafe fn pre_init() {
     // special, so:
     let scb = &*cortex_m::peripheral::SCB::ptr(); // tada
 
-    // Before doing anything interesting, enable ARMv7-M detailed fault
-    // reporting. That way if we screw something up below, we get (say) a Bus
+    // Enable ARMv7-M detailed fault reporting before doing anything
+    // interesting. That way, if we screw something up below, we get (say) a Bus
     // Fault with useful metadata, instead of a meaningless Hard Fault.
     scb.shcrs.write(scb.shcrs.read() | (0b111 << 16));
 
-    // VTOR points at address 0 at reset (i.e. right now). Currently this
-    // references flash, but we're about to remap memory to place SRAM there.
-    // And so, we need to change VTOR to point at the stable address of the
-    // vector table in Flash.
+    // VTOR points at address 0 at reset (i.e. right now). On STM32F4 the
+    // address space at zero is a configurable alias for one of several possible
+    // memories. Currently, it aliases Flash, which actually lives at a higher
+    // address. We're going to switch address 0 to alias SRAM, so to keep a
+    // valid vector table, we need to move VTOR to point to Flash's actual
+    // non-aliased address.
     scb.vtor.write(&__vector_table_in_flash as *const _ as u32);
 
-    // At reset, SYSCFG is out of reset but its interface is not being clocked.
-    // Fix that.
+    // We need the SYSCFG peripheral, which is brought out of reset
+    // automatically -- but its interface is not clocked by default, which makes
+    // it hard to talk to. Fix that.
     (*device::RCC::ptr())
         .apb2enr
         .modify(|_, w| w.syscfgen().enabled());
@@ -55,27 +58,16 @@ unsafe fn pre_init() {
         .memrm
         .write(|w| w.mem_mode().bits(0b11));
 
-    // Now, please. For all we know we're about to return into it!
+    // Now, please.
     asm::dsb();
     asm::isb();
-
-    // ----------- it is now slightly safer to access statics ------------
-
-    // r0 has already enabled floating point, but we use floating point in ISRs.
-    // To make this work, we need to enable automatic FP context save, so that
-    // the thread-level FP state won't get corrupted. However, doing this
-    // naively increases interrupt latency by *tens of cycles*. To avoid paying
-    // this penalty for ISRs that don't use FP, we also enable *lazy* context
-    // save, which waits until the first FPU instruction.
-    (*cortex_m::peripheral::FPU::ptr()).fpccr.write(
-        (1 << 31)      // automatic
-                     | (1 << 30), // lazy
-    );
 
     // Turn SYSCFG back off for good measure.
     (*device::RCC::ptr())
         .apb2enr
         .modify(|_, w| w.syscfgen().disabled());
+
+    // ----------- it is now *slightly* safer to access statics ------------
 
     // Primary data and bss are uninitialized, but will be initialized shortly.
     // Initialize our discontiguous regions.
@@ -86,4 +78,24 @@ unsafe fn pre_init() {
         &mut _local_data_end,
         &_local_data_init,
     );
+
+    // ----------- it is now safe to access statics ------------
+
+    // r0 enables floating point for us, on Cortex-M4F. However, by default,
+    // floating point is set up to work only in thread-mode code, and not in
+    // interrupt handlers. We use a lot of floating point in interrupt handlers,
+    // so we need to fix this. The key is to enable stacking of floating point
+    // registers on interrupt entry. The Cortex-M4F has an Automatic FP Context
+    // Save feature that we'll switch on.
+    //
+    // Because we're sensitive to interrupt latency, we don't want to do this
+    // every time. In particular, the start-of-active-video ISR does not use
+    // floating point, and it would be a shame to slow that one down.
+    //
+    // To avoid that, we also switch on Lazy FP Context Save. This reserves
+    // space in the interrupt frame for the FP context, but delays actually
+    // writing it until the ISR tries to use floating point.
+    let fpccr_val = (1 << 31)  // automatic
+                  | (1 << 30); // lazy
+    (*cortex_m::peripheral::FPU::ptr()).fpccr.write(fpccr_val);
 }
