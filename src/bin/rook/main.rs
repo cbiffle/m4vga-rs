@@ -131,7 +131,7 @@ fn entry() -> ! {
                     let fs = fine_scroll.load(Ordering::Relaxed);
                     m4vga::rast::text_10x16::unpack(
                         &*MESSAGE.try_lock().expect("message unavail"),
-                        m4vga::font_10x16::FONT.as_glyph_slices(),
+                        font_10x16::FONT.as_glyph_slices(),
                         &mut tgt[16 - fs..],
                         ln - 500,
                         81,

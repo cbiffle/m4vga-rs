@@ -1,6 +1,5 @@
 #![no_std]
 
-pub mod font_10x16;
 pub mod rast;
 pub mod timing;
 pub mod util;

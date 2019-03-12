@@ -1,5 +1,7 @@
 //! A bitmapped ASCII font with 10x16 pixel characters.
 
+#![no_std]
+
 #[derive(Clone)]
 pub struct Font([u8; 4096]);
 

@@ -41,7 +41,7 @@ extern crate panic_itm;
 use stm32f4;
 use stm32f4::stm32f407::interrupt;
 
-use m4vga::font_10x16;
+use font_10x16;
 use m4vga::rast::text_10x16::{self, AChar};
 use m4vga::util::spin_lock::SpinLock;
 
