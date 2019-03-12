@@ -9,10 +9,8 @@ pub mod measurement;
 pub mod math;
 mod startup;
 
-mod bg_rast;
-mod hstate;
+mod isr;
 pub mod priority;
-mod shock;
 
 use cortex_m::peripheral as cm;
 use stm32f4::stm32f407 as device;
@@ -44,9 +42,9 @@ pub const MAX_PIXELS_PER_LINE: usize = 800;
 
 // re-export ISR entry points
 
-pub use crate::bg_rast::maintain_raster_isr as pendsv_raster_isr;
-pub use crate::hstate::hstate_isr as tim4_horiz_isr;
-pub use crate::shock::shock_absorber_isr as tim3_shock_isr;
+pub use crate::isr::bg_rast::maintain_raster_isr as pendsv_raster_isr;
+pub use crate::isr::hstate::hstate_isr as tim4_horiz_isr;
+pub use crate::isr::shock::shock_absorber_isr as tim3_shock_isr;
 
 /// Driver handle.
 ///
@@ -242,7 +240,7 @@ impl Vga<Idle> {
         // Adjust tim3's CC2 value back in time.
         self.mode_state.tim3.ccr2.modify(|r, w| {
             w.ccr2()
-                .bits(r.ccr2().bits() - shock::SHOCK_ABSORBER_SHIFT_CYCLES)
+                .bits(r.ccr2().bits() - isr::shock::SHOCK_ABSORBER_SHIFT_CYCLES)
         });
 
         // Configure tim3 to distribute its enable signal as its trigger output.
@@ -315,7 +313,7 @@ impl Vga<Idle> {
 
         // Start TIM3, which starts TIM4.
         tim3.cr1.modify(|_, w| w.cen().set_bit());
-        *shock::SHOCK_TIMER.try_lock().unwrap() = Some(tim3);
+        *isr::shock::SHOCK_TIMER.try_lock().unwrap() = Some(tim3);
 
         // Turn on both our device interrupts. We need to turn on TIM4 before
         // TIM3 or TIM3 may just wake up and idle forever.
