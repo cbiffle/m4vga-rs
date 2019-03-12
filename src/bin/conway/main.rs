@@ -52,11 +52,11 @@ fn main() -> ! {
         // ... and provide a raster callback.
         .with_raster(
             |ln, tgt, ctx, _| {
-                m4vga::measurement::sig_d_set();
+                m4vga::util::measurement::sig_d_set();
 
                 let fg = fg.try_lock().expect("fg unavail");
 
-                m4vga::measurement::sig_d_clear();
+                m4vga::util::measurement::sig_d_clear();
 
                 let offset = ln * (800 / 32);
                 m4vga::rast::bitmap_1::unpack(

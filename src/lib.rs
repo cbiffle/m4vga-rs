@@ -4,10 +4,7 @@ pub mod rast;
 pub mod timing;
 pub mod util;
 
-pub mod measurement;
-
 pub mod math;
-mod startup;
 
 mod isr;
 pub mod priority;
@@ -468,7 +465,7 @@ pub fn init(
     dma2: device::DMA2,
 ) -> Vga<Idle> {
     unsafe {
-        measurement::init();
+        util::measurement::init();
     }
 
     let previous_instance = DRIVER_INIT_FLAG.swap(true, Ordering::SeqCst);

@@ -88,9 +88,9 @@ fn main() -> ! {
                         &mut *fg.try_lock().expect("swap access"),
                     );
                     let bg = u32_as_u8_mut(bg);
-                    m4vga::measurement::sig_d_set();
+                    m4vga::util::measurement::sig_d_set();
                     render(table, bg, frame);
-                    m4vga::measurement::sig_d_clear();
+                    m4vga::util::measurement::sig_d_clear();
                     frame = (frame + 1) % 65536; // prevent windup
                 }
             },

@@ -5,6 +5,7 @@ use stm32f4::stm32f407 as device;
 use core::sync::atomic::Ordering;
 
 use crate::timing::Timing;
+use crate::util::measurement;
 use crate::util::stm32::CopyHack;
 use crate::{
     acquire_hw, set_vert_state, vert_state, VState, HPSHARE, LINE, TIMING,
@@ -25,7 +26,7 @@ use crate::{
 /// }
 /// ```
 pub fn hstate_isr() {
-    crate::measurement::sig_a_set();
+    measurement::sig_a_set();
 
     // Start a critical section wrt PendSV here. We're higher priority, so
     // really this just detects races.
@@ -78,7 +79,7 @@ pub fn hstate_isr() {
         LINE.store(line, Ordering::Relaxed);
     }
 
-    crate::measurement::sig_a_clear();
+    measurement::sig_a_clear();
 }
 
 /// Routine for handling SAV (start-of-active video). This needs to do as little

@@ -86,7 +86,7 @@ fn main() -> ! {
                 let thread = priority::Thread::new_checked().unwrap();
 
                 loop {
-                    m4vga::measurement::sig_d_set();
+                    m4vga::util::measurement::sig_d_set();
                     let s = (frame as f32 / 50.).sin() * 0.7 + 1.;
                     let tx = (frame as f32 / 100.).cos() * 100.;
                     let ty = 0.;
@@ -120,7 +120,7 @@ fn main() -> ! {
 
                     frame += 1;
 
-                    m4vga::measurement::sig_d_clear();
+                    m4vga::util::measurement::sig_d_clear();
                     vga.sync_to_vblank();
                     writer.reset(&thread);
                 }

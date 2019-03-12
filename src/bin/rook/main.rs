@@ -111,7 +111,7 @@ fn entry() -> ! {
 
                 if ln < 500 {
                     // Bitmapped wireframe display.
-                    m4vga::measurement::sig_d_set();
+                    m4vga::util::measurement::sig_d_set();
 
                     let front = FRONT_BUF.try_lock().expect("front unavail");
 
@@ -122,7 +122,7 @@ fn entry() -> ! {
                         &mut tgt[0..800],
                     );
                     ctx.target_range = 0..800; // 800 pixels now valid
-                    m4vga::measurement::sig_d_clear();
+                    m4vga::util::measurement::sig_d_clear();
                 } else {
                     // Text display. This implements the "smooth" part of smooth
                     // scrolling: honoring the `fine_scroll` value by shifting
@@ -154,7 +154,7 @@ fn entry() -> ! {
                     fine_scroll.store(fs + 1, Ordering::Release);
                 }
 
-                m4vga::measurement::sig_c_set();
+                m4vga::util::measurement::sig_c_set();
                 // Copy draw buffer to front buffer. We are racing here: we must
                 // release the lock on front before scanout starts, or we'll
                 // panic.
@@ -162,7 +162,7 @@ fn entry() -> ! {
                     back.as_word_slice(),
                     &mut *FRONT_BUF.lock_mut(),
                 );
-                m4vga::measurement::sig_c_clear();
+                m4vga::util::measurement::sig_c_clear();
 
                 back.clear();
 
@@ -172,9 +172,9 @@ fn entry() -> ! {
                     vertex_buf,
                 );
 
-                m4vga::measurement::sig_c_set();
+                m4vga::util::measurement::sig_c_set();
                 draw_edges(&mut back, edges, vertex_buf);
-                m4vga::measurement::sig_c_clear();
+                m4vga::util::measurement::sig_c_clear();
 
                 // Animate:
                 model = model * rot_step_y.clone();

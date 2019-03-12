@@ -126,7 +126,7 @@ fn entry() -> ! {
             // the target buffer.
             #[link_section = ".ramcode"]
             |ln, tgt, ctx, _| {
-                m4vga::measurement::sig_d_set();
+                m4vga::util::measurement::sig_d_set();
                 let mut left_margin = 800;
                 let mut right_margin = 0;
                 RASTER
@@ -144,7 +144,7 @@ fn entry() -> ! {
                     fill(&mut tgt[right_margin..800], 0);
                 }
 
-                m4vga::measurement::sig_d_clear();
+                m4vga::util::measurement::sig_d_clear();
                 ctx.target_range = 0..800; // 800 pixels now valid
             },
             |vga| loop {
