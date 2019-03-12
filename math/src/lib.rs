@@ -128,6 +128,12 @@ impl<T> From<(T, T, T)> for Vec3<T> {
     }
 }
 
+impl<T> Vec3<T> {
+    pub fn map<S>(self, mut f: impl FnMut(T) -> S) -> Vec3<S> {
+        Vec3(f(self.0), f(self.1), f(self.2))
+    }
+}
+
 impl<T> Vec3<T>
 where
     T: Clone + core::ops::Mul<Output = T> + core::ops::Sub<Output = T>,
