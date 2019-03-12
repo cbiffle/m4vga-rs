@@ -6,7 +6,10 @@ name = "m4vga"
 version = "0.1.0"
 
 [workspace]
-members = ["gfx"]
+members = [
+  "gfx",
+  "stlmunge",
+]
 
 [features]
 default = ["panic-itm"]
