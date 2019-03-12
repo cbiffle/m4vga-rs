@@ -26,11 +26,14 @@ impl I0 {
     }
 }
 
+/*
+TODO: re-enable when we start supporting hblank hooks
 impl I1 {
     pub(crate) unsafe fn new() -> Self {
         I1(PhantomData)
     }
 }
+*/
 
 impl Thread {
     pub(crate) unsafe fn new() -> Self {

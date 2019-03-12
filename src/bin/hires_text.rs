@@ -52,7 +52,6 @@ const WHITE: u8 = 0b11_11_11;
 const BLACK: u8 = 0b00_00_00;
 const DK_GRAY: u8 = 0b01_01_01;
 const RED: u8 = 0b00_00_11;
-const GREEN: u8 = 0b00_11_00;
 const BLUE: u8 = 0b11_00_00;
 
 static TEXT_BUF: SpinLock<[AChar; COLS * ROWS]> =
