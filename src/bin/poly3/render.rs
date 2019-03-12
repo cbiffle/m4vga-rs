@@ -1,11 +1,12 @@
 use core::ops::Range;
 
 use arrayvec::ArrayVec;
+use smart_default::SmartDefault;
 
 use math::Vec3i;
 
-pub const MAX_TRIS: usize = 12;
-pub const MAX_STATES: usize = 2 * MAX_TRIS;
+const MAX_TRIS: usize = 36;
+pub const MAX_STATES: usize = MAX_TRIS;
 
 /// Description of a triangle relative to a vertex buffer.
 #[derive(Copy, Clone, Debug)]
@@ -106,13 +107,14 @@ impl StateIndex {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, SmartDefault)]
 pub struct Raster {
     /// A triangle state machine for each camera-facing triangle in this frame.
     ///
     /// Note: this always contains an entry for each potential state, but some
     /// may contain garbage. Only the entries indexed by the index arrays are
     /// guaranteed valid.
+    #[default(_code = "[TriState::default(); MAX_STATES]")]
     tris: [TriState; MAX_STATES],
     /// Indices of pending triangles, sorted by descending Y.
     ///
@@ -135,7 +137,6 @@ impl Raster {
         self.pending.clear();
         self.active.clear();
 
-        let mut states = 0;
         for tri in tris {
             let tri_ref = TriRef::normalize(
                 &vertices[tri.vertex_indices[0]],
@@ -151,13 +152,13 @@ impl Raster {
                 }
 
                 let (top, bot) = tri_ref.to_states(tri.color);
-                self.tris[states] = top;
-                self.pending.push(StateIndex::checked(states).unwrap());
-                states += 1;
+                self.tris[self.pending.len()] = top;
+                self.pending
+                    .push(StateIndex::checked(self.pending.len()).unwrap());
                 if let Some(bot) = bot {
-                    self.tris[states] = bot;
-                    self.pending.push(StateIndex::checked(states).unwrap());
-                    states += 1;
+                    self.tris[self.pending.len()] = bot;
+                    self.pending
+                        .push(StateIndex::checked(self.pending.len()).unwrap());
                 }
             }
         }

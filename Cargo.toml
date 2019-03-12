@@ -33,7 +33,7 @@ panic-itm = {version = "0.4.0", optional = true}
 panic-halt = {version = "0.2.0", optional = true}
 libm = "0.1.2"
 r0 = "0.2.2"
-arrayvec = { version = "0.4.10", default-features = false }
+smart-default = "0.5"
 #stm32f4xx-hal = "0.2.4"
 #stm32f407g-disc = "0.1.2"
 rand = {version = "0.6", default-features = false}
@@ -41,6 +41,11 @@ gfx = {path = "gfx"}
 ordered-float = { version = "1.0.1", default-features = false }
 font_10x16 = {path = "font_10x16"}
 math = {path = "math"}
+
+[dependencies.arrayvec]
+version = "0.4.10"
+default-features = false
+features = ["array-sizes-33-128"]
 
 [dependencies.scopeguard]
 default-features = false

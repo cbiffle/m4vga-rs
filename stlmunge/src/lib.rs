@@ -65,9 +65,9 @@ impl Edge {
     }
 }
 
-/// Process binary STL file from `input` and produce a `Munged` structure
+/// Process binary STL file from `input` and produce a `Wireframe` structure
 /// describing the results.
-fn munge(mut input: impl Read + Seek) -> io::Result<Munged> {
+fn wireframe_munge(mut input: impl Read + Seek) -> io::Result<Wireframe> {
     // The first 80 bytes of a binary STL file are a text header. Skip it.
     input.seek(io::SeekFrom::Current(80))?;
     // Next we have the triangle count.
@@ -135,7 +135,7 @@ fn munge(mut input: impl Read + Seek) -> io::Result<Munged> {
     let mut unique_edges: Vec<_> = unique_edges.into_iter().collect();
     unique_edges.sort_unstable();
 
-    Ok(Munged {
+    Ok(Wireframe {
         trivial_edges,
         duplicate_edges,
         points: ordered_points,
@@ -143,7 +143,7 @@ fn munge(mut input: impl Read + Seek) -> io::Result<Munged> {
     })
 }
 
-struct Munged {
+struct Wireframe {
     pub trivial_edges: usize,
     pub duplicate_edges: usize,
     pub points: Vec<Vec3of>,
@@ -152,11 +152,11 @@ struct Munged {
 
 /// Reads a binary STL file on `input` and produces Rust code representing its
 /// vertices and connectivity on `output`.
-pub fn generate(
+pub fn generate_wireframe(
     input: impl Read + Seek,
     mut output: impl Write,
 ) -> io::Result<()> {
-    let munged = munge(input)?;
+    let munged = wireframe_munge(input)?;
 
     writeln!(output, "// {} trivial edges removed", munged.trivial_edges)?;
     writeln!(
@@ -184,6 +184,164 @@ pub fn generate(
     )?;
     for Edge(start, end) in munged.edges {
         writeln!(output, "    ({}, {}),", start, end)?;
+    }
+    writeln!(output, "];")?;
+
+    Ok(())
+}
+
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+struct Tri(usize, usize, usize);
+
+impl Tri {
+    /// Note that this flips the vertex ordering, because our solid renderer
+    /// assumes counter-clockwise ordering because I'm inconsistent.
+    fn new(a: usize, b: usize, c: usize) -> Self {
+        if a < b && a < c {
+            Tri(c, b, a)
+        } else if b < a && b < c {
+            Tri(a, c, b)
+        } else {
+            Tri(b, a, c)
+        }
+    }
+}
+
+fn center_cloud(points: &mut [Vec3of]) {
+    let mut center = Vec3(0., 0., 0.);
+
+    for p in points.iter() {
+        center = center + Vec3((p.0).0, (p.1).0, (p.2).0);
+    }
+
+    let n = points.len() as f32;
+    let center = Vec3(center.0 / n, center.1 / n, center.2 / n);
+
+    for p in points {
+        let shifted = Vec3((p.0).0, (p.1).0, (p.2).0) - center;
+        *p = Vec3(
+            OrderedFloat(shifted.0),
+            OrderedFloat(shifted.1),
+            OrderedFloat(shifted.2),
+        );
+    }
+}
+
+/// Process binary STL file from `input` and produce a `Solid` structure
+/// describing the results.
+fn solid_munge(mut input: impl Read + Seek) -> io::Result<Solid> {
+    // The first 80 bytes of a binary STL file are a text header. Skip it.
+    input.seek(io::SeekFrom::Current(80))?;
+    // Next we have the triangle count.
+    let tri_count = input.read_u32::<LittleEndian>()?;
+    eprintln!("tri_count = {}", tri_count);
+
+    // Point-to-ID mapping.
+    let mut unique_points: HashMap<Vec3of, usize> = HashMap::default();
+    // Points ordered by ID.
+    let mut ordered_points = vec![];
+    // Triangles we've discovered to be non-trivial.
+    let mut unique_tris: HashSet<Tri> = HashSet::default();
+    // Diagnostic counters.
+    let mut trivial_tris = 0;
+    let mut duplicate_tris = 0;
+
+    for _ in 0..tri_count {
+        // The first 3 floats are the normal vector for the triangle, which we
+        // don't use. Skip it.
+        input.seek(io::SeekFrom::Current(3 * 4))?;
+
+        let mut indices = [0; 3];
+        for index in indices.iter_mut() {
+            // Read the next triangle vertex and quantize it before we can
+            // mistakenly use it raw.
+            let p = quantize(read_point(&mut input)?);
+            // Record the existing index for `p` or assign a new one.
+            *index = *unique_points.entry(p).or_insert_with(|| {
+                let n = ordered_points.len();
+                ordered_points.push(p);
+                n
+            });
+        }
+
+        // The final two bytes are an "attributes" field that has no meaning to
+        // us. Skip it.
+        input.seek(io::SeekFrom::Current(2))?;
+
+        if indices[0] == indices[1] && indices[0] == indices[2] {
+            trivial_tris += 1;
+            continue;
+        }
+
+        // Record the triangle.
+        if !unique_tris.insert(Tri::new(indices[0], indices[1], indices[2])) {
+            duplicate_tris += 1;
+        }
+    }
+
+    eprintln!("points.len: {}", ordered_points.len());
+    eprintln!("edges.len: {}", unique_tris.len());
+    eprintln!("trivial_tris: {}", trivial_tris);
+    eprintln!("duplicate_tris: {}", duplicate_tris);
+
+    let mut unique_tris: Vec<_> = unique_tris
+        .into_iter()
+        .enumerate()
+        .map(|(i, t)| (t, i as u8))
+        .collect();
+    unique_tris.sort_unstable();
+
+    center_cloud(&mut ordered_points);
+
+    Ok(Solid {
+        trivial_tris,
+        duplicate_tris,
+        points: ordered_points,
+        tris: unique_tris,
+    })
+}
+
+struct Solid {
+    pub trivial_tris: usize,
+    pub duplicate_tris: usize,
+    pub points: Vec<Vec3of>,
+    pub tris: Vec<(Tri, u8)>,
+}
+
+/// Reads a binary STL file on `input` and produces Rust code representing its
+/// vertices and connectivity on `output`.
+pub fn generate_solid(
+    input: impl Read + Seek,
+    mut output: impl Write,
+) -> io::Result<()> {
+    let munged = solid_munge(input)?;
+
+    writeln!(output, "// {} trivial tris removed", munged.trivial_tris)?;
+    writeln!(
+        output,
+        "// {} duplicate tris removed",
+        munged.duplicate_tris
+    )?;
+    writeln!(output, "use math::{{Vec3, Vec3f}};")?;
+    writeln!(output, "use crate::render::Tri;")?;
+
+    writeln!(
+        output,
+        "pub const VERTEX_COUNT: usize = {};",
+        munged.points.len()
+    )?;
+    writeln!(output, "pub static VERTICES: [Vec3f; VERTEX_COUNT] = [")?;
+    for p in munged.points {
+        writeln!(output, "    Vec3({}f32, {}f32, {}f32),", p.0, p.1, p.2)?;
+    }
+    writeln!(output, "];")?;
+
+    writeln!(output, "pub static TRIS: [Tri; {}] = [", munged.tris.len())?;
+    for (Tri(a, b, c), color) in munged.tris {
+        writeln!(output, "    Tri {{")?;
+        writeln!(output, "        vertex_indices: [{}, {}, {}],", a, b, c)?;
+        writeln!(output, "        color: {},", color + 28)?;
+        writeln!(output, "    }},")?;
     }
     writeln!(output, "];")?;
 
