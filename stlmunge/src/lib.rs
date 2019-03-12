@@ -13,6 +13,7 @@ use std::collections::HashSet;
 use std::io::{self, Read, Seek, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt};
+use math::Vec3;
 use ordered_float::OrderedFloat;
 
 /// Quantization factor. Coordinates are multiplied by this before rounding, so
@@ -21,30 +22,25 @@ use ordered_float::OrderedFloat;
 const Q: f32 = 10.;
 
 type Of32 = OrderedFloat<f32>;
+type Vec3of = Vec3<Of32>;
 
-/// A basic representation of a point.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-struct Point3(Of32, Of32, Of32);
-
-impl Point3 {
-    /// Forces the point onto a quantized grid, to merge points that are nearby
-    /// but not exactly identical.
-    fn quantized(self) -> Self {
-        fn q(v: Of32) -> Of32 {
-            OrderedFloat((v.0 * Q).round() / Q)
-        }
-
-        Point3(q(self.0), q(self.1), q(self.2))
+/// Forces the point onto a quantized grid, to merge points that are nearby
+/// but not exactly identical.
+fn quantize(p: Vec3of) -> Vec3of {
+    fn q(v: Of32) -> Of32 {
+        OrderedFloat((v.0 * Q).round() / Q)
     }
 
-    /// Loads a point from binary STL representation.
-    fn read_from(mut input: impl Read) -> io::Result<Self> {
-        Ok(Point3(
-            OrderedFloat(input.read_f32::<LittleEndian>()?),
-            OrderedFloat(input.read_f32::<LittleEndian>()?),
-            OrderedFloat(input.read_f32::<LittleEndian>()?),
-        ))
-    }
+    Vec3(q(p.0), q(p.1), q(p.2))
+}
+
+/// Loads a point from binary STL representation.
+fn read_point(mut input: impl Read) -> io::Result<Vec3of> {
+    Ok(Vec3(
+        OrderedFloat(input.read_f32::<LittleEndian>()?),
+        OrderedFloat(input.read_f32::<LittleEndian>()?),
+        OrderedFloat(input.read_f32::<LittleEndian>()?),
+    ))
 }
 
 /// An edge in the connectivity graph. Each edge connects two vertices, which
@@ -79,7 +75,7 @@ fn munge(mut input: impl Read + Seek) -> io::Result<Munged> {
     eprintln!("tri_count = {}", tri_count);
 
     // Point-to-ID mapping.
-    let mut unique_points: HashMap<Point3, usize> = HashMap::default();
+    let mut unique_points: HashMap<Vec3of, usize> = HashMap::default();
     // Points ordered by ID.
     let mut ordered_points = vec![];
     // Edges we've discovered to be non-trivial.
@@ -97,7 +93,7 @@ fn munge(mut input: impl Read + Seek) -> io::Result<Munged> {
         for index in indices.iter_mut() {
             // Read the next triangle vertex and quantize it before we can
             // mistakenly use it raw.
-            let mut p = Point3::read_from(&mut input)?.quantized();
+            let mut p = quantize(read_point(&mut input)?);
             // This Z-shift drops the rook into the XY plane so that its center
             // of mass is near the origin. It's a side effect of the model
             // having been designed for 3D printing, and could be automated by
@@ -150,7 +146,7 @@ fn munge(mut input: impl Read + Seek) -> io::Result<Munged> {
 struct Munged {
     pub trivial_edges: usize,
     pub duplicate_edges: usize,
-    pub points: Vec<Point3>,
+    pub points: Vec<Vec3of>,
     pub edges: Vec<Edge>,
 }
 

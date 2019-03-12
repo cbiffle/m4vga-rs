@@ -119,7 +119,7 @@ where
 }
 
 /// A 3-vector.
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Vec3<T>(pub T, pub T, pub T);
 
 impl<T> From<(T, T, T)> for Vec3<T> {
