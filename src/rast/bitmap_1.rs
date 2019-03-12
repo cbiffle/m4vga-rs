@@ -10,15 +10,6 @@ extern "C" {
         render_target: *mut Pixel,
         words_in_input: usize,
     );
-
-    #[allow(improper_ctypes)]
-    fn unpack_1bpp_overlay_impl(
-        input_line: *const u32,
-        clut: *const AtomicUsize,
-        render_target: *mut Pixel,
-        words_in_input: usize,
-        background: *const u8,
-    );
 }
 
 /// Rasterize packed 1bpp pixel data using a color lookup table (CLUT).
@@ -40,30 +31,5 @@ pub fn unpack(src: &[u32], clut: &AtomicUsize, target: &mut [u8]) {
     // holds.
     unsafe {
         unpack_1bpp_impl(src.as_ptr(), clut, target.as_mut_ptr(), src.len())
-    }
-}
-
-/// Rasterize packed 1bpp pixel data using a foreground color and background
-/// image. This overlays the results of unpacking (a la `unpack`) over the
-/// full-color image scanline `background`, interpreting 0 bits in the input as
-/// transparency.
-pub fn unpack_overlay(
-    src: &[u32],
-    clut: &AtomicUsize,
-    background: &[u8],
-    target: &mut [u8],
-) {
-    assert_eq!(src.len() * 32, target.len());
-    assert_eq!(target.len(), background.len());
-    // Safety: the assembler routine is safe as long as the assertions above
-    // hold.
-    unsafe {
-        unpack_1bpp_overlay_impl(
-            src.as_ptr(),
-            clut,
-            target.as_mut_ptr(),
-            src.len(),
-            background.as_ptr(),
-        )
     }
 }
