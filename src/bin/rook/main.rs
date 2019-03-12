@@ -21,7 +21,8 @@ use stm32f4;
 use stm32f4::stm32f407::interrupt;
 
 use gfx;
-use m4vga::math::{Augment, HomoTransform, Mat4f, Project, Vec2, Vec2i, Vec3f};
+use math::{Augment, HomoTransform, Mat4f, Project, Vec2, Vec2i, Vec3f};
+
 use m4vga::rast::text_10x16::AChar;
 use m4vga::util::rw_lock::ReadWriteLock;
 

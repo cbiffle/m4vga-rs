@@ -168,7 +168,7 @@ pub fn generate(
         "// {} duplicate edges removed",
         munged.duplicate_edges
     )?;
-    writeln!(output, "use m4vga::math::{{Vec3, Vec3f}};")?;
+    writeln!(output, "use math::{{Vec3, Vec3f}};")?;
 
     writeln!(
         output,

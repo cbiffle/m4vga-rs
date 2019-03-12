@@ -2,7 +2,7 @@ use core::ops::Range;
 
 use arrayvec::ArrayVec;
 
-use m4vga::math::Vec3i;
+use math::Vec3i;
 
 pub const MAX_TRIS: usize = 12;
 pub const MAX_STATES: usize = 2 * MAX_TRIS;

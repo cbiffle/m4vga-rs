@@ -4,8 +4,6 @@ pub mod rast;
 pub mod timing;
 pub mod util;
 
-pub mod math;
-
 mod isr;
 pub mod priority;
 

@@ -1,5 +1,7 @@
 //! `no_std` linear algebra routines
 
+#![no_std]
+
 use num_traits::{one, zero, One, Zero};
 
 /// The `Vector` trait describes types that act like vectors, in the

@@ -10,7 +10,8 @@ use cortex_m::singleton;
 use stm32f4;
 use stm32f4::stm32f407::interrupt;
 
-use m4vga::math::{Augment, HomoTransform, Mat4f, Project, Vec3, Vec3f, Vec3i};
+use math::{Augment, HomoTransform, Mat4f, Project, Vec3, Vec3f, Vec3i};
+
 use m4vga::util::rw_lock::ReadWriteLock;
 
 mod render;

@@ -11,7 +11,8 @@ extern crate panic_itm;
 use stm32f4;
 use stm32f4::stm32f407::interrupt;
 
-use m4vga::math::{Augment, Mat3f, Matrix, Project, Vec2};
+use math::{Augment, Mat3f, Matrix, Project, Vec2};
+
 use m4vga::priority;
 use m4vga::rast::direct;
 use m4vga::util::race_buf::RaceBuffer;

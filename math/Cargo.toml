@@ -1,0 +1,9 @@
+[package]
+name = "math"
+version = "0.1.0"
+authors = ["Cliff L. Biffle <code@cliffle.com>"]
+edition = "2018"
+
+[dependencies]
+num-traits = {version = "0.2.6", default-features = false}
+libm = "0.1.2"
