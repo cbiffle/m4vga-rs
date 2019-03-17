@@ -35,6 +35,17 @@ fn quantize(p: Vec3of) -> Vec3of {
     Vec3(q(p.0), q(p.1), q(p.2))
 }
 
+/// Normalizes a vector to unit length.
+fn normalize(p: Vec3of) -> Vec3of {
+    let len =
+        ((p.0).0 * (p.0).0 + (p.1).0 * (p.1).0 + (p.2).0 * (p.2).0).sqrt();
+    Vec3(
+        OrderedFloat((p.0).0 / len),
+        OrderedFloat((p.1).0 / len),
+        OrderedFloat((p.2).0 / len),
+    )
+}
+
 /// Loads a point from binary STL representation.
 fn read_point(mut input: impl Read) -> io::Result<Vec3of> {
     Ok(Vec3(
@@ -238,7 +249,8 @@ fn solid_munge(mut input: impl Read + Seek) -> io::Result<Solid> {
     let mut trivial_tris = 0;
 
     for _ in 0..tri_count {
-        let normal = unique_normals.get(quantize(read_point(&mut input)?));
+        let normal =
+            unique_normals.get(normalize(quantize(read_point(&mut input)?)));
 
         let mut indices = [0; 3];
         for index in indices.iter_mut() {
@@ -259,7 +271,8 @@ fn solid_munge(mut input: impl Read + Seek) -> io::Result<Solid> {
         }
 
         // Record the triangle.
-        unique_tris.insert(Tri::new(indices[0], indices[1], indices[2], normal));
+        unique_tris
+            .insert(Tri::new(indices[0], indices[1], indices[2], normal));
     }
 
     let mut ordered_points = points.into_vec();
@@ -318,10 +331,22 @@ pub fn generate_solid(
     }
     writeln!(output, "];")?;
 
+    writeln!(
+        output,
+        "pub const NORMAL_COUNT: usize = {};",
+        munged.normals.len()
+    )?;
+    writeln!(output, "pub static NORMALS: [Vec3f; NORMAL_COUNT] = [")?;
+    for p in munged.normals {
+        writeln!(output, "    Vec3({}f32, {}f32, {}f32),", p.0, p.1, p.2)?;
+    }
+    writeln!(output, "];")?;
+
     writeln!(output, "pub static TRIS: [Tri; {}] = [", munged.tris.len())?;
     for Tri(a, b, c, normal) in munged.tris {
         writeln!(output, "    Tri {{")?;
         writeln!(output, "        vertex_indices: [{}, {}, {}],", a, b, c)?;
+        writeln!(output, "        normal_index: {},", normal)?;
         writeln!(output, "        color: {},", normal + 28)?;
         writeln!(output, "    }},")?;
     }

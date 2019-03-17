@@ -12,6 +12,7 @@ pub const MAX_STATES: usize = MAX_TRIS;
 #[derive(Copy, Clone, Debug)]
 pub struct Tri {
     pub vertex_indices: [usize; 3],
+    pub normal_index: usize,
     pub color: u8,
 }
 
