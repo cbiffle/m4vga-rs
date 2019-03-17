@@ -10,6 +10,7 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::hash::Hash;
 use std::io::{self, Read, Seek, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -75,14 +76,11 @@ fn wireframe_munge(mut input: impl Read + Seek) -> io::Result<Wireframe> {
     eprintln!("tri_count = {}", tri_count);
 
     // Point-to-ID mapping.
-    let mut unique_points: HashMap<Vec3of, usize> = HashMap::default();
-    // Points ordered by ID.
-    let mut ordered_points = vec![];
+    let mut points = Registry::default();
     // Edges we've discovered to be non-trivial.
-    let mut unique_edges: HashSet<Edge> = HashSet::default();
+    let mut unique_edges = DupeSet::default();
     // Diagnostic counters.
     let mut trivial_edges = 0;
-    let mut duplicate_edges = 0;
 
     for _ in 0..tri_count {
         // The first 3 floats are the normal vector for the triangle, which we
@@ -100,11 +98,7 @@ fn wireframe_munge(mut input: impl Read + Seek) -> io::Result<Wireframe> {
             // centering the mesh. (TODO)
             (p.2).0 -= 20.;
             // Record the existing index for `p` or assign a new one.
-            *index = *unique_points.entry(p).or_insert_with(|| {
-                let n = ordered_points.len();
-                ordered_points.push(p);
-                n
-            });
+            *index = points.get(p);
         }
 
         // The final two bytes are an "attributes" field that has no meaning to
@@ -120,20 +114,18 @@ fn wireframe_munge(mut input: impl Read + Seek) -> io::Result<Wireframe> {
                 continue;
             }
 
-            if !unique_edges.insert(edge) {
-                duplicate_edges += 1;
-                continue;
-            }
+            unique_edges.insert(edge);
         }
     }
+
+    let ordered_points = points.into_vec();
+    let (mut unique_edges, duplicate_edges) = unique_edges.finish();
+    unique_edges.sort_unstable();
 
     eprintln!("points.len: {}", ordered_points.len());
     eprintln!("edges.len: {}", unique_edges.len());
     eprintln!("trivial_edges: {}", trivial_edges);
     eprintln!("duplicate_edges: {}", duplicate_edges);
-
-    let mut unique_edges: Vec<_> = unique_edges.into_iter().collect();
-    unique_edges.sort_unstable();
 
     Ok(Wireframe {
         trivial_edges,
@@ -237,14 +229,11 @@ fn solid_munge(mut input: impl Read + Seek) -> io::Result<Solid> {
     eprintln!("tri_count = {}", tri_count);
 
     // Point-to-ID mapping.
-    let mut unique_points: HashMap<Vec3of, usize> = HashMap::default();
-    // Points ordered by ID.
-    let mut ordered_points = vec![];
+    let mut points = Registry::default();
     // Triangles we've discovered to be non-trivial.
-    let mut unique_tris: HashSet<Tri> = HashSet::default();
+    let mut unique_tris = DupeSet::default();
     // Diagnostic counters.
     let mut trivial_tris = 0;
-    let mut duplicate_tris = 0;
 
     for _ in 0..tri_count {
         // The first 3 floats are the normal vector for the triangle, which we
@@ -257,11 +246,7 @@ fn solid_munge(mut input: impl Read + Seek) -> io::Result<Solid> {
             // mistakenly use it raw.
             let p = quantize(read_point(&mut input)?);
             // Record the existing index for `p` or assign a new one.
-            *index = *unique_points.entry(p).or_insert_with(|| {
-                let n = ordered_points.len();
-                ordered_points.push(p);
-                n
-            });
+            *index = points.get(p);
         }
 
         // The final two bytes are an "attributes" field that has no meaning to
@@ -274,10 +259,11 @@ fn solid_munge(mut input: impl Read + Seek) -> io::Result<Solid> {
         }
 
         // Record the triangle.
-        if !unique_tris.insert(Tri::new(indices[0], indices[1], indices[2])) {
-            duplicate_tris += 1;
-        }
+        unique_tris.insert(Tri::new(indices[0], indices[1], indices[2]));
     }
+
+    let mut ordered_points = points.into_vec();
+    let (unique_tris, duplicate_tris) = unique_tris.finish();
 
     eprintln!("points.len: {}", ordered_points.len());
     eprintln!("edges.len: {}", unique_tris.len());
@@ -346,4 +332,57 @@ pub fn generate_solid(
     writeln!(output, "];")?;
 
     Ok(())
+}
+
+#[derive(Clone, Debug, Default)]
+struct Registry<T>
+where
+    T: Eq + Hash,
+{
+    unique: HashMap<T, usize>,
+    ordered: Vec<T>,
+}
+
+impl<T> Registry<T>
+where
+    T: Eq + Hash,
+{
+    fn get(&mut self, val: T) -> usize
+    where
+        T: Clone,
+    {
+        let ordered = &mut self.ordered;
+        *self.unique.entry(val.clone()).or_insert_with(|| {
+            let n = ordered.len();
+            ordered.push(val);
+            n
+        })
+    }
+
+    fn into_vec(self) -> Vec<T> {
+        self.ordered
+    }
+}
+
+#[derive(Clone, Debug)]
+struct DupeSet<T: Eq + Hash>(HashSet<T>, usize);
+
+impl<T: Eq + Hash> Default for DupeSet<T> {
+    fn default() -> Self {
+        DupeSet(HashSet::default(), 0)
+    }
+}
+
+impl<T: Eq + Hash> DupeSet<T> {
+    fn insert(&mut self, val: T) -> bool {
+        let new = self.0.insert(val);
+        if !new {
+            self.1 += 1
+        }
+        new
+    }
+
+    fn finish(self) -> (Vec<T>, usize) {
+        (self.0.into_iter().collect(), self.1)
+    }
 }
