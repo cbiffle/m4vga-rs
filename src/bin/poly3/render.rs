@@ -3,7 +3,7 @@ use core::ops::Range;
 use arrayvec::ArrayVec;
 use smart_default::SmartDefault;
 
-use math::Vec3i;
+use math::{Vec3f, Vec3i};
 
 const MAX_TRIS: usize = 36;
 pub const MAX_STATES: usize = MAX_TRIS;
@@ -54,6 +54,8 @@ pub struct TriState {
     right: Line,
     /// Color of triangle.
     color: u8,
+    /// Normal vector of triangle.
+    normal: Vec3f,
 }
 
 impl TriState {
@@ -134,7 +136,12 @@ impl Raster {
     /// Resets the raster context and prepares to render triangle state machines
     /// for the triangles described by the index buffer `tris` and vertex buffer
     /// `vertices`.
-    pub fn reset(&mut self, tris: &[Tri], vertices: &[Vec3i]) {
+    pub fn reset(
+        &mut self,
+        tris: &[Tri],
+        vertices: &[Vec3i],
+        normals: &[Vec3f],
+    ) {
         self.pending.clear();
         self.active.clear();
 
@@ -152,7 +159,8 @@ impl Raster {
                     continue;
                 }
 
-                let (top, bot) = tri_ref.to_states(tri.color);
+                let (top, bot) =
+                    tri_ref.to_states(tri.color, normals[tri.normal_index]);
                 self.tris[self.pending.len()] = top;
                 self.pending
                     .push(StateIndex::checked(self.pending.len()).unwrap());
@@ -172,7 +180,7 @@ impl Raster {
 
     pub fn step<F>(&mut self, scanline: usize, mut body: F)
     where
-        F: FnMut(Range<usize>, u8),
+        F: FnMut(Range<usize>, u8, Vec3f),
     {
         // Move any tris that start on this scanline from pending to active.
         // Because the tris are sorted descending by top_y, the relevant ones
@@ -191,7 +199,7 @@ impl Raster {
             let tri = i.index_mut(&mut self.tris);
             let range = tri.evaluate(scanline);
             if range.end > range.start {
-                body(range, tri.color);
+                body(range, tri.color, tri.normal);
             }
         }
 
@@ -233,7 +241,11 @@ impl<'a> TriRef<'a> {
         }
     }
 
-    fn to_states(self, color: u8) -> (TriState, Option<TriState>) {
+    fn to_states(
+        self,
+        color: u8,
+        normal: Vec3f,
+    ) -> (TriState, Option<TriState>) {
         let top_y = (self.0).1;
 
         if (self.1).1 == top_y {
@@ -245,6 +257,7 @@ impl<'a> TriRef<'a> {
                 left: Line::between(self.0, self.2),
                 right: Line::between(self.1, self.2),
                 color,
+                normal,
             };
             (top, None)
         } else if (self.1).1 == (self.2).1 {
@@ -256,6 +269,7 @@ impl<'a> TriRef<'a> {
                 left: Line::between(self.0, self.2),
                 right: Line::between(self.0, self.1),
                 color,
+                normal,
             };
             (top, None)
         } else if (self.1).1 < (self.2).1 {
@@ -266,6 +280,7 @@ impl<'a> TriRef<'a> {
                 left: Line::between(self.0, self.2),
                 right: Line::between(self.0, self.1),
                 color,
+                normal,
             };
             let bot = TriState {
                 top_y: (self.1).1 as usize,
@@ -273,6 +288,7 @@ impl<'a> TriRef<'a> {
                 left: Line::between(self.0, self.2),
                 right: Line::between(self.1, self.2),
                 color,
+                normal,
             };
             (top, Some(bot))
         } else {
@@ -283,6 +299,7 @@ impl<'a> TriRef<'a> {
                 left: Line::between(self.0, self.2),
                 right: Line::between(self.0, self.1),
                 color,
+                normal,
             };
             let bot = TriState {
                 top_y: (self.2).1 as usize,
@@ -290,6 +307,7 @@ impl<'a> TriRef<'a> {
                 left: Line::between(self.2, self.1),
                 right: Line::between(self.0, self.1),
                 color,
+                normal,
             };
             (top, Some(bot))
         }

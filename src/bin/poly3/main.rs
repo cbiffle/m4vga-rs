@@ -10,7 +10,7 @@ use cortex_m::singleton;
 use stm32f4;
 use stm32f4::stm32f407::interrupt;
 
-use math::{Augment, HomoTransform, Mat4f, Project, Vec3, Vec3i};
+use math::{Augment, HomoTransform, Mat4f, Project, Vec3, Vec3i, Vec3f, Vector};
 
 use m4vga::util::rw_lock::ReadWriteLock;
 
@@ -39,11 +39,17 @@ fn main() -> ! {
 
 static RASTER: ReadWriteLock<Option<Raster>> = ReadWriteLock::new(None);
 
+const LIGHT: Vec3f = Vec3(-0.577, 0.577, 0.577);
+
 fn entry() -> ! {
     *RASTER.lock_mut() = Some(Raster::default());
 
     let transformed = singleton!(: [Vec3i; model::VERTEX_COUNT] =
                      [Vec3(0,0,0); model::VERTEX_COUNT])
+    .unwrap();
+
+    let transformed_n = singleton!(: [Vec3f; model::NORMAL_COUNT] =
+                     [Vec3(0.,0.,0.); model::NORMAL_COUNT])
     .unwrap();
 
     let projection = Mat4f::translate((400., 300., 0.).into())
@@ -72,7 +78,8 @@ fn entry() -> ! {
                     .expect("rast access")
                     .as_mut()
                     .unwrap()
-                    .step(ln, |span, color| {
+                    .step(ln, |span, _color, normal| {
+                        let color = ((normal.dot(LIGHT) + 1.) * 1.7) as u8 * 0b010101;
                         left_margin = left_margin.min(span.start);
                         right_margin = right_margin.max(span.end);
                         fill(&mut tgt[span.clone()], color);
@@ -90,16 +97,26 @@ fn entry() -> ! {
                 let model = Mat4f::rotate_y(frame as f32 * 0.1)
                     * Mat4f::rotate_z(frame as f32 * 0.05);
                 let modelview = projection * model;
+
+                // Project vertices into screen space.
                 for (t, s) in
                     transformed.iter_mut().zip(model::VERTICES.iter())
                 {
                     let Vec3(x, y, z) = (modelview * s.augment()).project();
                     *t = Vec3(x as i32, y as i32, z as i32);
                 }
+
+                // Project normals into model space.
+                for (t, n) in
+                    transformed_n.iter_mut().zip(model::NORMALS.iter())
+                {
+                    *t = (model * n.augment()).project();
+                }
+
                 RASTER.lock_mut()
                     .as_mut()
                     .unwrap()
-                    .reset(&model::TRIS, transformed);
+                    .reset(&model::TRIS, transformed, transformed_n);
                 vga.video_on();
                 frame += 1;
             },
