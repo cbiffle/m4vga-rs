@@ -183,18 +183,18 @@ pub fn generate_wireframe(
 }
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
-struct Tri(usize, usize, usize);
+struct Tri(usize, usize, usize, usize);
 
 impl Tri {
     /// Note that this flips the vertex ordering, because our solid renderer
     /// assumes counter-clockwise ordering because I'm inconsistent.
-    fn new(a: usize, b: usize, c: usize) -> Self {
+    fn new(a: usize, b: usize, c: usize, normal: usize) -> Self {
         if a < b && a < c {
-            Tri(c, b, a)
+            Tri(c, b, a, normal)
         } else if b < a && b < c {
-            Tri(a, c, b)
+            Tri(a, c, b, normal)
         } else {
-            Tri(b, a, c)
+            Tri(b, a, c, normal)
         }
     }
 }
@@ -232,13 +232,13 @@ fn solid_munge(mut input: impl Read + Seek) -> io::Result<Solid> {
     let mut points = Registry::default();
     // Triangles we've discovered to be non-trivial.
     let mut unique_tris = DupeSet::default();
+    // Normal vectors we've discovered to be non-trivial.
+    let mut unique_normals = Registry::default();
     // Diagnostic counters.
     let mut trivial_tris = 0;
 
     for _ in 0..tri_count {
-        // The first 3 floats are the normal vector for the triangle, which we
-        // don't use. Skip it.
-        input.seek(io::SeekFrom::Current(3 * 4))?;
+        let normal = unique_normals.get(quantize(read_point(&mut input)?));
 
         let mut indices = [0; 3];
         for index in indices.iter_mut() {
@@ -259,23 +259,17 @@ fn solid_munge(mut input: impl Read + Seek) -> io::Result<Solid> {
         }
 
         // Record the triangle.
-        unique_tris.insert(Tri::new(indices[0], indices[1], indices[2]));
+        unique_tris.insert(Tri::new(indices[0], indices[1], indices[2], normal));
     }
 
     let mut ordered_points = points.into_vec();
-    let (unique_tris, duplicate_tris) = unique_tris.finish();
+    let (mut unique_tris, duplicate_tris) = unique_tris.finish();
+    unique_tris.sort_unstable();
 
     eprintln!("points.len: {}", ordered_points.len());
     eprintln!("edges.len: {}", unique_tris.len());
     eprintln!("trivial_tris: {}", trivial_tris);
     eprintln!("duplicate_tris: {}", duplicate_tris);
-
-    let mut unique_tris: Vec<_> = unique_tris
-        .into_iter()
-        .enumerate()
-        .map(|(i, t)| (t, i as u8))
-        .collect();
-    unique_tris.sort_unstable();
 
     center_cloud(&mut ordered_points);
 
@@ -283,6 +277,7 @@ fn solid_munge(mut input: impl Read + Seek) -> io::Result<Solid> {
         trivial_tris,
         duplicate_tris,
         points: ordered_points,
+        normals: unique_normals.into_vec(),
         tris: unique_tris,
     })
 }
@@ -291,7 +286,8 @@ struct Solid {
     pub trivial_tris: usize,
     pub duplicate_tris: usize,
     pub points: Vec<Vec3of>,
-    pub tris: Vec<(Tri, u8)>,
+    pub normals: Vec<Vec3of>,
+    pub tris: Vec<Tri>,
 }
 
 /// Reads a binary STL file on `input` and produces Rust code representing its
@@ -323,10 +319,10 @@ pub fn generate_solid(
     writeln!(output, "];")?;
 
     writeln!(output, "pub static TRIS: [Tri; {}] = [", munged.tris.len())?;
-    for (Tri(a, b, c), color) in munged.tris {
+    for Tri(a, b, c, normal) in munged.tris {
         writeln!(output, "    Tri {{")?;
         writeln!(output, "        vertex_indices: [{}, {}, {}],", a, b, c)?;
-        writeln!(output, "        color: {},", color + 28)?;
+        writeln!(output, "        color: {},", normal + 28)?;
         writeln!(output, "    }},")?;
     }
     writeln!(output, "];")?;
