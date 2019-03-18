@@ -10,7 +10,9 @@ use cortex_m::singleton;
 use stm32f4;
 use stm32f4::stm32f407::interrupt;
 
-use math::{Augment, HomoTransform, Mat4f, Project, Vec3, Vec3i, Vec3f, Vector};
+use math::{
+    Augment, HomoTransform, Mat4f, Project, Vec3, Vec3f, Vec3i, Vector,
+};
 
 use m4vga::util::rw_lock::ReadWriteLock;
 
@@ -75,7 +77,8 @@ fn entry() -> ! {
                     .try_lock_mut()
                     .expect("rast access")
                     .step(ln, |span, _color, normal| {
-                        let color = ((normal.dot(LIGHT) + 1.) * 1.7) as u8 * 0b010101;
+                        let color =
+                            ((normal.dot(LIGHT) + 1.) * 1.7) as u8 * 0b010101;
                         left_margin = left_margin.min(span.start);
                         right_margin = right_margin.max(span.end);
                         fill(&mut tgt[span.clone()], color);
