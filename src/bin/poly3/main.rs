@@ -37,13 +37,11 @@ fn main() -> ! {
     entry()
 }
 
-static RASTER: ReadWriteLock<Option<Raster>> = ReadWriteLock::new(None);
+static RASTER: ReadWriteLock<Raster> = ReadWriteLock::new(Raster::new());
 
 const LIGHT: Vec3f = Vec3(-0.577, 0.577, 0.577);
 
 fn entry() -> ! {
-    *RASTER.lock_mut() = Some(Raster::default());
-
     let transformed = singleton!(: [Vec3i; model::VERTEX_COUNT] =
                      [Vec3(0,0,0); model::VERTEX_COUNT])
     .unwrap();
@@ -76,8 +74,6 @@ fn entry() -> ! {
                 RASTER
                     .try_lock_mut()
                     .expect("rast access")
-                    .as_mut()
-                    .unwrap()
                     .step(ln, |span, _color, normal| {
                         let color = ((normal.dot(LIGHT) + 1.) * 1.7) as u8 * 0b010101;
                         left_margin = left_margin.min(span.start);
@@ -114,8 +110,6 @@ fn entry() -> ! {
                 }
 
                 RASTER.lock_mut()
-                    .as_mut()
-                    .unwrap()
                     .reset(&model::TRIS, transformed, transformed_n);
                 vga.video_on();
                 frame += 1;

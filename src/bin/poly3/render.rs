@@ -1,9 +1,6 @@
 use core::ops::Range;
 
-use arrayvec::ArrayVec;
-use smart_default::SmartDefault;
-
-use math::{Vec3f, Vec3i};
+use math::{Vec3, Vec3f, Vec3i};
 
 const MAX_TRIS: usize = 36;
 pub const MAX_STATES: usize = MAX_TRIS;
@@ -59,6 +56,17 @@ pub struct TriState {
 }
 
 impl TriState {
+    const fn new() -> Self {
+        TriState {
+            top_y: 0,
+            last_y: 0,
+            left: Line::new(),
+            right: Line::new(),
+            color: 0,
+            normal: Vec3(0., 0., 0.),
+        }
+    }
+
     pub fn evaluate(&self, scanline: usize) -> Range<usize> {
         let scanline = scanline as f32;
         self.left.evaluate(scanline)..self.right.evaluate(scanline)
@@ -72,6 +80,13 @@ pub struct Line {
 }
 
 impl Line {
+    const fn new() -> Self {
+        Line {
+            slope: 0.,
+            intercept: 0.,
+        }
+    }
+
     pub fn between(p0: &Vec3i, p1: &Vec3i) -> Line {
         let p0_0 = p0.0 as f32;
         let p0_1 = p0.1 as f32;
@@ -110,14 +125,13 @@ impl StateIndex {
     }
 }
 
-#[derive(Clone, SmartDefault)]
+#[derive(Clone)]
 pub struct Raster {
     /// A triangle state machine for each camera-facing triangle in this frame.
     ///
     /// Note: this always contains an entry for each potential state, but some
     /// may contain garbage. Only the entries indexed by the index arrays are
     /// guaranteed valid.
-    #[default(_code = "[TriState::default(); MAX_STATES]")]
     tris: [TriState; MAX_STATES],
     /// Indices of pending triangles, sorted by descending Y.
     ///
@@ -125,14 +139,22 @@ pub struct Raster {
     /// to triangles that start on this scanline.
     ///
     /// Invariant: each index in this vector must be unique.
-    pending: ArrayVec<[StateIndex; MAX_STATES]>,
+    pending: StateVec,
     /// Indices of active triangles in no particular order.
     ///
     /// Invariant: each index in this vector must be unique.
-    active: ArrayVec<[StateIndex; MAX_STATES]>,
+    active: StateVec,
 }
 
 impl Raster {
+    pub const fn new() -> Self {
+        Raster {
+            tris: [TriState::new(); MAX_STATES],
+            pending: StateVec::new(),
+            active: StateVec::new(),
+        }
+    }
+
     /// Resets the raster context and prepares to render triangle state machines
     /// for the triangles described by the index buffer `tris` and vertex buffer
     /// `vertices`.
@@ -195,7 +217,7 @@ impl Raster {
         }
 
         // Process the pixel range for each active tri, stepping it forward.
-        for i in &self.active {
+        for i in &*self.active {
             let tri = i.index_mut(&mut self.tris);
             let range = tri.evaluate(scanline);
             if range.end > range.start {
@@ -204,9 +226,8 @@ impl Raster {
         }
 
         // Retire tris that are ending.
-        // TODO: using retain here makes us O(n) because it preserves order.
         let tris = &self.tris;
-        self.active.retain(|i| i.index(tris).last_y != scanline);
+        self.active.swap_remove_if(|i| i.index(tris).last_y == scanline);
     }
 }
 
@@ -311,5 +332,60 @@ impl<'a> TriRef<'a> {
             };
             (top, Some(bot))
         }
+    }
+}
+
+#[derive(Clone)]
+struct StateVec {
+    states: [StateIndex; MAX_STATES],
+    valid: usize,
+}
+
+impl StateVec {
+    const fn new() -> Self {
+        StateVec {
+            states: [StateIndex(0); MAX_STATES],
+            valid: 0,
+        }
+    }
+
+    fn push(&mut self, val: StateIndex) {
+        self.states[self.valid] = val;
+        self.valid += 1;
+    }
+
+    fn clear(&mut self) {
+        self.valid = 0;
+    }
+
+    fn pop(&mut self) {
+        assert!(self.valid > 0);
+        self.valid -= 1;
+    }
+
+    fn swap_remove_if(&mut self, mut f: impl FnMut(StateIndex) -> bool) {
+        let mut i = 0;
+        while i < self.valid {
+            if f(self.states[i]) {
+                self.states.swap(i, self.valid - 1);
+                self.valid -= 1;
+            } else {
+                i += 1;
+            }
+        }
+    }
+}
+
+impl core::ops::Deref for StateVec {
+    type Target = [StateIndex];
+
+    fn deref(&self) -> &Self::Target {
+        &self.states[..self.valid]
+    }
+}
+
+impl core::ops::DerefMut for StateVec {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.states[..self.valid]
     }
 }

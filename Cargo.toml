@@ -42,11 +42,6 @@ ordered-float = { version = "1.0.1", default-features = false }
 font_10x16 = {path = "font_10x16"}
 math = {path = "math"}
 
-[dependencies.arrayvec]
-version = "0.4.10"
-default-features = false
-features = ["array-sizes-33-128"]
-
 [dependencies.scopeguard]
 default-features = false
 version = "1.0"

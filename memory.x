@@ -18,7 +18,7 @@ SECTIONS {
 
   .local_stack (NOLOAD) : ALIGN(4) {
     /* place stack at base of RAM to catch overflow */
-    . += 4096;
+    . += 2048;
     _stack_start = .;
   } >CCM
 
