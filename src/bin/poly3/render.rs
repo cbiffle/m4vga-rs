@@ -2,7 +2,7 @@ use core::ops::Range;
 
 use math::{Vec3, Vec3f, Vec3i};
 
-const MAX_TRIS: usize = 36;
+const MAX_TRIS: usize = 90;
 pub const MAX_STATES: usize = MAX_TRIS;
 
 /// Description of a triangle relative to a vertex buffer.
