@@ -93,8 +93,8 @@ fn entry() -> ! {
             },
             |vga| loop {
                 vga.sync_to_vblank();
-                let model = Mat4f::rotate_y(frame as f32 * 0.1)
-                    * Mat4f::rotate_z(frame as f32 * 0.05);
+                let model = Mat4f::rotate_y(frame as f32 * 0.05)
+                    * Mat4f::rotate_z(frame as f32 * 0.025);
                 let modelview = projection * model;
 
                 // Project vertices into screen space.
