@@ -65,9 +65,6 @@ fn entry() -> ! {
         .configure_timing(&m4vga::timing::SVGA_800_600)
         // ... and provide a raster callback.
         .with_raster(
-            // The raster callback is invoked on every horizontal retrace to
-            // provide new pixels. Here, we just scribble a test pattern into
-            // the target buffer.
             #[link_section = ".ramcode"]
             |ln, tgt, ctx, _| {
                 m4vga::util::measurement::sig_d_set();
