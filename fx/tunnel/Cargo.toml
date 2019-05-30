@@ -23,6 +23,5 @@ optional = true
 
 [[bin]]
 name = "tunnel"
-path = "src/main.rs"
 test = false
 bench = false

@@ -1,105 +1,7 @@
-//! Traditional "zooming down a tunnel" effect.
+use super::table;
+use super::{HALF_HEIGHT, HALF_WIDTH, WIDTH};
 
-#![cfg(feature = "bare_metal")]
-
-#![no_std]
-#![no_main]
-
-#[cfg(feature = "panic-halt")]
-extern crate panic_halt;
-#[cfg(feature = "panic-itm")]
-extern crate panic_itm;
-
-mod table;
-
-use m4vga::rast::direct;
-use m4vga::util::spin_lock::SpinLock;
-use stm32f4;
-use stm32f4::stm32f407::interrupt;
-use table::Entry;
-
-const NATIVE_WIDTH: usize = 800;
-const NATIVE_HEIGHT: usize = 600;
-const SCALE: usize = 2;
-
-const WIDTH: usize = NATIVE_WIDTH / SCALE;
-const HEIGHT: usize = NATIVE_HEIGHT / SCALE;
-const HALF_WIDTH: usize = WIDTH / 2;
-const HALF_HEIGHT: usize = HEIGHT / 2;
-
-const BUFFER_SIZE: usize = WIDTH * HALF_HEIGHT;
-const BUFFER_WORDS: usize = BUFFER_SIZE / 4;
-const BUFFER_STRIDE: usize = WIDTH / 4;
-
-static mut BUF0: [u32; BUFFER_WORDS] = [0; BUFFER_WORDS];
-#[link_section = ".local_bss"]
-static mut BUF1: [u32; BUFFER_WORDS] = [0; BUFFER_WORDS];
-#[no_mangle]
-static mut TABLE: table::Table =
-    [[Entry::zero(); table::TAB_WIDTH]; table::TAB_HEIGHT];
-
-/// Demo entry point. Responsible for starting up the display driver and
-/// providing callbacks.
-#[allow(unused_parens)] // TODO bug in cortex_m_rt
-#[cortex_m_rt::entry]
-fn main() -> ! {
-    let table = unsafe { &mut TABLE };
-    table::compute(table);
-    let table = &table;
-
-    let fg = SpinLock::new(unsafe { &mut BUF0 });
-    let mut bg = unsafe { &mut BUF1 };
-
-    // Give the driver its hardware resources...
-    m4vga::take_hardware()
-        // ...select a display timing...
-        .configure_timing(&m4vga::timing::SVGA_800_600)
-        // ... and provide a raster callback.
-        .with_raster(
-            |ln, tgt, ctx, _| {
-                if ln < 4 || ln > 595 {
-                    m4vga::rast::solid_color_fill(tgt, ctx, 800, 0);
-                    return;
-                }
-                let buf = fg.try_lock().expect("rast fg access");
-
-                let ln = ln / SCALE;
-                if ln < HALF_HEIGHT {
-                    direct::direct_color(ln, tgt, ctx, *buf, BUFFER_STRIDE);
-                } else {
-                    direct::direct_color_mirror(
-                        ln,
-                        tgt,
-                        ctx,
-                        *buf,
-                        BUFFER_STRIDE,
-                        HEIGHT,
-                    );
-                };
-                ctx.cycles_per_pixel *= SCALE;
-                ctx.repeat_lines = SCALE - 1;
-            },
-            // This closure contains the main loop of the program.
-            |vga| {
-                vga.video_on();
-                let mut frame = 0;
-                loop {
-                    vga.sync_to_vblank();
-                    core::mem::swap(
-                        &mut bg,
-                        &mut *fg.try_lock().expect("swap access"),
-                    );
-                    let bg = u32_as_u8_mut(bg);
-                    m4vga::util::measurement::sig_d_set();
-                    render(table, bg, frame);
-                    m4vga::util::measurement::sig_d_clear();
-                    frame = (frame + 1) % 65536; // prevent windup
-                }
-            },
-        )
-}
-
-fn render(table: &table::Table, fb: &mut [u8], frame: usize) {
+pub fn render(table: &table::Table, fb: &mut [u8], frame: usize) {
     const DSPEED: f32 = 1.;
     const ASPEED: f32 = 0.2;
 
@@ -140,14 +42,14 @@ fn render(table: &table::Table, fb: &mut [u8], frame: usize) {
             // right_i).  We'll update the position in-place, but the slopes are
             // constant.
             let mut left = top_left;
-            let left_i = Entry {
+            let left_i = table::Entry {
                 distance: (bot_left.distance - top_left.distance)
                     / table::SUB as f32,
                 angle: (bot_left.angle - top_left.angle) / table::SUB as f32,
             };
 
             let mut right = top_right;
-            let right_i = Entry {
+            let right_i = table::Entry {
                 distance: (bot_right.distance - top_right.distance)
                     / table::SUB as f32,
                 angle: (bot_right.angle - top_right.angle) / table::SUB as f32,
@@ -163,7 +65,7 @@ fn render(table: &table::Table, fb: &mut [u8], frame: usize) {
                 // this time moving from the value of 'left' to the value of
                 // 'right'.
                 let mut v = left;
-                let i = Entry {
+                let i = table::Entry {
                     distance: (right.distance - left.distance)
                         / table::SUB as f32,
                     angle: (right.angle - left.angle) / table::SUB as f32,
@@ -186,7 +88,7 @@ fn render(table: &table::Table, fb: &mut [u8], frame: usize) {
 
                     // Advance the horizontal linear interpolator toward
                     // 'right'.
-                    v = Entry {
+                    v = table::Entry {
                         distance: v.distance + i.distance,
                         angle: v.angle + i.angle,
                     };
@@ -194,11 +96,11 @@ fn render(table: &table::Table, fb: &mut [u8], frame: usize) {
 
                 // Advance the vertical linear interpolators toward 'bot_left'
                 // and 'bot_right', respectively.
-                left = Entry {
+                left = table::Entry {
                     distance: left.distance + left_i.distance,
                     angle: left.angle + left_i.angle,
                 };
-                right = Entry {
+                right = table::Entry {
                     distance: right.distance + right_i.distance,
                     angle: right.angle + right_i.angle,
                 };
@@ -240,34 +142,4 @@ fn tex_fetch(x: f32, y: f32) -> u32 {
 #[cfg(feature = "alt-texture")]
 fn tex_fetch(x: f32, y: f32) -> u32 {
     (x * y).to_bits()
-}
-
-fn u32_as_u8_mut(slice: &mut [u32]) -> &mut [u8] {
-    unsafe {
-        core::slice::from_raw_parts_mut(
-            slice.as_mut_ptr() as *mut u8,
-            slice.len() * 4,
-        )
-    }
-}
-
-/// Wires up the PendSV handler expected by the driver.
-#[cortex_m_rt::exception]
-#[link_section = ".ramcode"]
-fn PendSV() {
-    m4vga::pendsv_raster_isr()
-}
-
-/// Wires up the TIM3 handler expected by the driver.
-#[interrupt]
-#[link_section = ".ramcode"]
-fn TIM3() {
-    m4vga::tim3_shock_isr()
-}
-
-/// Wires up the TIM4 handler expected by the driver.
-#[interrupt]
-#[link_section = ".ramcode"]
-fn TIM4() {
-    m4vga::tim4_horiz_isr()
 }
