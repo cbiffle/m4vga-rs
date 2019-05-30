@@ -1,7 +1,5 @@
 //! Traditional "zooming down a tunnel" effect.
 
-#![cfg(feature = "bare_metal")]
-
 #![no_std]
 #![no_main]
 
