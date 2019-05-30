@@ -15,6 +15,3 @@ default-members = ["m4vga", "m4demos"]
 codegen-units = 1 # better optimizations
 debug = true # symbols are nice and they don't increase the size on Flash
 lto = true # better optimizations
-
-[patch.crates-io]
-ordered-float = { git = 'https://github.com/cbiffle/rust-ordered-float', branch = 'no-std' }
