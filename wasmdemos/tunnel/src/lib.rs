@@ -22,7 +22,7 @@ impl Demo {
         fx::table::compute(&mut table);
 
         Demo {
-            framebuffer8: vec![0b11_00_11; fx::WIDTH * fx::HEIGHT/2],
+            framebuffer8: vec![0b11_00_11; fx::WIDTH * fx::HEIGHT / 2],
             framebuffer32: vec![0xFF_00_FF_00; fx::WIDTH * fx::HEIGHT],
             table,
             frame: 0,
@@ -47,40 +47,23 @@ impl Demo {
         self.frame = (self.frame + 1) % 65536;
 
         // Top half of display.
-        for (ln, (target, packed)) in self
-            .framebuffer32
-            .chunks_mut(fx::WIDTH)
-            .zip(self.framebuffer8.chunks(fx::WIDTH))
-            .enumerate()
+        for (ln, target) in self.framebuffer32.chunks_mut(fx::WIDTH).enumerate()
         {
-            if ln < (4/2) || ln > (595 / 2) {
+            if ln < (4 / 2) || ln > (595 / 2) {
                 solid_color_fill(target, 400, 0);
                 continue;
             }
 
             if ln < fx::HALF_HEIGHT {
-                direct_color(ln, target, packed, fx::BUFFER_STRIDE);
+                direct_color(ln, target, &self.framebuffer8, fx::BUFFER_STRIDE);
             } else {
-                direct_color_mirror(ln, target, packed, fx::BUFFER_STRIDE, fx::HEIGHT);
-            }
-        }
-        // Bottom half
-        for (ln, (target, packed)) in self
-            .framebuffer32[fx::WIDTH * fx::HEIGHT/2..]
-            .chunks_mut(fx::WIDTH)
-            .zip(self.framebuffer8.chunks(fx::WIDTH).rev())
-            .enumerate()
-        {
-            let ln = ln + fx::HALF_HEIGHT;
-            if ln < (4/2) || ln > (595 / 2) {
-                solid_color_fill(target, 400, 0);
-                continue;
-            }
-
-            if ln < fx::HALF_HEIGHT {
-                direct_color(ln, target, packed, fx::BUFFER_STRIDE);
-            } else {
-                direct_color_mirror(ln, target, packed, fx::BUFFER_STRIDE, fx::HEIGHT);
+                direct_color_mirror(
+                    ln,
+                    target,
+                    &self.framebuffer8,
+                    fx::BUFFER_STRIDE,
+                    fx::HEIGHT,
+                );
             }
         }
     }
@@ -94,24 +77,30 @@ fn solid_color_fill(target: &mut [u32], _width: usize, color8: u8) {
 }
 
 fn direct_color(
-    _line_number: usize,
+    line_number: usize,
     target: &mut [u32],
     packed: &[u8],
-    _stride: usize,
+    stride_words: usize,
 ) {
-    for (dest, src) in target.iter_mut().zip(packed) {
+    let stride = stride_words * 4;
+    let offset = line_number * stride;
+    for (dest, src) in target.iter_mut().zip(&packed[offset..offset + stride]) {
         *dest = unpack_color8(*src);
     }
 }
 
 fn direct_color_mirror(
-    _line_number: usize,
+    line_number: usize,
     target: &mut [u32],
     packed: &[u8],
-    _stride: usize,
-    _height: usize,
+    stride_words: usize,
+    height: usize,
 ) {
-    for (dest, src) in target.iter_mut().zip(packed.iter().rev()) {
+    let stride = stride_words * 4;
+    let line_number = height - line_number - 1;
+    let offset = line_number * stride;
+    let source = packed[offset..offset + stride].iter().rev();
+    for (dest, src) in target.iter_mut().zip(source) {
         *dest = unpack_color8(*src);
     }
 }
