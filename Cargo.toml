@@ -8,6 +8,8 @@ members = [
   "stlmunge",
 
   "fx/tunnel",
+
+  "wasmdemos/tunnel",
 ]
 default-members = ["m4vga", "m4demos"]
 
