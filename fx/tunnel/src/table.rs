@@ -1,6 +1,8 @@
 //! Lookup table support.
 
 use core::f32::consts::PI;
+
+#[cfg(feature = "bare_metal")]
 use libm::F32Ext;
 
 pub const SUB: usize = 4;
