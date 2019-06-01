@@ -11,7 +11,7 @@ use crate::rast::{RasterCtx, TargetBuffer};
 use crate::timing::{Timing, MIN_CYCLES_PER_PIXEL};
 use crate::util::measurement;
 use crate::util::spin_lock::SpinLock;
-use crate::{
+use super::super::{
     acquire_hw, vert_state, NextTransfer, VState, HPSHARE, LINE, RASTER, TIMING,
 };
 

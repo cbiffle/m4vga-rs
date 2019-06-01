@@ -14,7 +14,7 @@
 //! before we expect the actual interrupt, and idle the CPU. This ensures that
 //! the CPU and bus are quiet when the interrupt fires.
 
-use crate::acquire_hw;
+use super::super::acquire_hw;
 use crate::util::spin_lock::SpinLock;
 use stm32f4::stm32f407 as device;
 

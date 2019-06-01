@@ -7,7 +7,7 @@ use core::sync::atomic::Ordering;
 use crate::timing::Timing;
 use crate::util::measurement;
 use crate::util::stm32::CopyHack;
-use crate::{
+use super::super::{
     acquire_hw, set_vert_state, vert_state, VState, HPSHARE, LINE, TIMING,
 };
 

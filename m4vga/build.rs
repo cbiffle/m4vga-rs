@@ -6,8 +6,14 @@ use std::path::PathBuf;
 use stlmunge;
 
 fn main() {
-    linker_script_plumbing();
-    build_assembly_sources();
+    let os_target = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
+    let simulation = os_target != "none";
+
+    if !simulation {
+        linker_script_plumbing();
+        build_assembly_sources();
+    }
+
     munge_rook_stl();
     munge_solid_stl();
 }

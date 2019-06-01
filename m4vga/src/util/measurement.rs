@@ -11,8 +11,11 @@
 //! - B: C9
 //! - C: C10
 //! - D: C11
-
-use stm32f4::stm32f407 as device;
+//!
+//! # Simulation
+//!
+//! Measurement signals are currently disabled in simulation, i.e. the
+//! `measurement` feature does nothing. This might change later.
 
 /// Sets up the measurement subsystem.
 ///
@@ -25,8 +28,9 @@ use stm32f4::stm32f407 as device;
 /// interrupts attempt to configure either RCC or GPIOC, their updates may be
 /// reverted. Call this from early in `main` and you're good.
 pub unsafe fn init() {
-    #[cfg(feature = "measurement")]
+    #[cfg(all(feature = "measurement", target_os = "none"))]
     {
+        use stm32f4::stm32f407 as device;
         let rcc = &*device::RCC::ptr();
         let gpioc = &*device::GPIOC::ptr();
 
@@ -65,26 +69,25 @@ pub unsafe fn init() {
     }
 }
 
-#[cfg(feature = "measurement")]
-fn write_gpioc_bsrr<F>(op: F)
-where
-    F: FnOnce(&mut device::gpioi::bsrr::W) -> &mut device::gpioi::bsrr::W,
-{
-    // Safety: writes to this register are atomic and idempotent.
-    unsafe { &*device::GPIOC::ptr() }.bsrr.write(op);
-}
+cfg_if::cfg_if! {
+    if #[cfg(all(target_os = "none", feature = "measurement"))] {
+        use stm32f4::stm32f407 as device;
 
-#[cfg(not(feature = "measurement"))]
-fn write_gpioc_bsrr<F>(_: F)
-where
-    F: FnOnce(&mut device::gpioi::bsrr::W) -> &mut device::gpioi::bsrr::W,
-{
+        fn write_gpioc_bsrr<F>(op: F)
+        where
+            F: FnOnce(&mut device::gpioi::bsrr::W) -> &mut device::gpioi::bsrr::W,
+        {
+            // Safety: writes to this register are atomic and idempotent.
+            unsafe { &*device::GPIOC::ptr() }.bsrr.write(op);
+        }
+    }
 }
 
 /// Set measurement signal A.
 ///
 /// If the `measurement` feature is not set, this is a no-op.
 pub fn sig_a_set() {
+    #[cfg(all(target_os = "none", feature = "measurement"))]
     write_gpioc_bsrr(|w| w.bs8().set_bit());
 }
 
@@ -92,6 +95,7 @@ pub fn sig_a_set() {
 ///
 /// If the `measurement` feature is not set, this is a no-op.
 pub fn sig_a_clear() {
+    #[cfg(all(target_os = "none", feature = "measurement"))]
     write_gpioc_bsrr(|w| w.br8().set_bit());
 }
 
@@ -99,6 +103,7 @@ pub fn sig_a_clear() {
 ///
 /// If the `measurement` feature is not set, this is a no-op.
 pub fn sig_b_set() {
+    #[cfg(all(target_os = "none", feature = "measurement"))]
     write_gpioc_bsrr(|w| w.bs9().set_bit());
 }
 
@@ -106,6 +111,7 @@ pub fn sig_b_set() {
 ///
 /// If the `measurement` feature is not set, this is a no-op.
 pub fn sig_b_clear() {
+    #[cfg(all(target_os = "none", feature = "measurement"))]
     write_gpioc_bsrr(|w| w.br9().set_bit());
 }
 
@@ -113,6 +119,7 @@ pub fn sig_b_clear() {
 ///
 /// If the `measurement` feature is not set, this is a no-op.
 pub fn sig_c_set() {
+    #[cfg(all(target_os = "none", feature = "measurement"))]
     write_gpioc_bsrr(|w| w.bs10().set_bit());
 }
 
@@ -120,6 +127,7 @@ pub fn sig_c_set() {
 ///
 /// If the `measurement` feature is not set, this is a no-op.
 pub fn sig_c_clear() {
+    #[cfg(all(target_os = "none", feature = "measurement"))]
     write_gpioc_bsrr(|w| w.br10().set_bit());
 }
 
@@ -127,6 +135,7 @@ pub fn sig_c_clear() {
 ///
 /// If the `measurement` feature is not set, this is a no-op.
 pub fn sig_d_set() {
+    #[cfg(all(target_os = "none", feature = "measurement"))]
     write_gpioc_bsrr(|w| w.bs11().set_bit());
 }
 
@@ -134,5 +143,6 @@ pub fn sig_d_set() {
 ///
 /// If the `measurement` feature is not set, this is a no-op.
 pub fn sig_d_clear() {
+    #[cfg(all(target_os = "none", feature = "measurement"))]
     write_gpioc_bsrr(|w| w.br11().set_bit());
 }

@@ -182,6 +182,7 @@ name = "m4vga"
 version = "0.1.0"
 dependencies = [
  "cc 1.0.37 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cfg-if 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "cortex-m 0.5.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "cortex-m-rt 0.6.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "cortex-m-semihosting 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",

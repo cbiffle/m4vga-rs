@@ -4,11 +4,16 @@ pub mod bitmap_1;
 pub mod direct;
 pub mod text_10x16;
 
-use crate::priority;
 use crate::Pixel;
-use core::cell::Cell;
-use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use scopeguard::defer;
+
+cfg_if::cfg_if! {
+    if #[cfg(target_os = "none")] {
+        use crate::priority;
+        use core::cell::Cell;
+        use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        use scopeguard::defer;
+    }
+}
 
 /// Number of pixels in the target buffers given to raster callbacks.
 pub const TARGET_BUFFER_SIZE: usize = super::MAX_PIXELS_PER_LINE + 32;
@@ -77,12 +82,14 @@ pub fn solid_color_fill(
     ctx.cycles_per_pixel *= width; // Stretched across the whole line.
 }
 
-// ---
-
-const EMPTY: usize = 0;
-const LOADING: usize = 1;
-const LOADED: usize = 2;
-const LOCKED: usize = 3;
+cfg_if::cfg_if! {
+    if #[cfg(target_os = "none")] {
+        const EMPTY: usize = 0;
+        const LOADING: usize = 1;
+        const LOADED: usize = 2;
+        const LOCKED: usize = 3;
+    }
+}
 
 /// A mechanism for loaning a reference to an interrupt handler (or another
 /// thread).
@@ -100,6 +107,7 @@ const LOCKED: usize = 3;
 /// `donate` is intended primarily for non-interrupt code, and can busy-wait.
 /// `observe` cannot, and is safer for use by interrupts. See each method's
 /// documentation for specifics.
+#[cfg(target_os = "none")]
 #[derive(Debug)]
 pub(crate) struct IRef {
     state: AtomicUsize,
@@ -107,8 +115,10 @@ pub(crate) struct IRef {
     contents: Cell<(usize, usize)>,
 }
 
+#[cfg(target_os = "none")]
 unsafe impl Sync for IRef {}
 
+#[cfg(target_os = "none")]
 impl IRef {
     /// Creates an `IRef` in the *empty* state.
     ///

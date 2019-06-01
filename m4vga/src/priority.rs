@@ -39,7 +39,10 @@ impl Thread {
     pub(crate) unsafe fn new() -> Self {
         Thread(PhantomData)
     }
+}
 
+#[cfg(target_os = "none")]
+impl Thread {
     /// Returns a `Thread` token only if called from thread priority.
     pub fn new_checked() -> Option<Self> {
         // TODO: read this from xPSR if cortex_m starts providing it. It's
