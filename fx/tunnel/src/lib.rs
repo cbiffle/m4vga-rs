@@ -23,12 +23,14 @@ mod bare;
 #[cfg(target_os = "none")]
 pub use bare::*;
 
-pub fn raster_callback(
+pub fn raster_callback<B>(
     ln: usize,
     target: &mut m4vga::rast::TargetBuffer,
     ctx: &mut m4vga::rast::RasterCtx,
-    fg: &SpinLock<&mut [u32; BUFFER_WORDS]>,
-) {
+    fg: &SpinLock<B>,
+)
+where B: AsMut<[u32]> + Send,
+{
     // Our image is slightly smaller than the display. Black the top and
     // bottom borders.
     if ln < 4 || ln > 595 {
@@ -36,18 +38,19 @@ pub fn raster_callback(
         return;
     }
 
-    let buf = fg.try_lock().expect("rast fg access");
+    let mut buf = fg.try_lock().expect("rast fg access");
+    let buf = buf.as_mut();
 
     let ln = ln / SCALE;
 
     if ln < HALF_HEIGHT {
-        m4vga::rast::direct::direct_color(ln, target, ctx, *buf, BUFFER_STRIDE);
+        m4vga::rast::direct::direct_color(ln, target, ctx, buf, BUFFER_STRIDE);
     } else {
         m4vga::rast::direct::direct_color_mirror(
             ln,
             target,
             ctx,
-            *buf,
+            buf,
             BUFFER_STRIDE,
             HEIGHT,
         );
@@ -57,14 +60,16 @@ pub fn raster_callback(
     ctx.repeat_lines = SCALE - 1;
 }
 
-pub fn render_frame<'buf>(
-    bg: &mut &'buf mut [u32; BUFFER_WORDS],
-    fg: &SpinLock<&'buf mut [u32; BUFFER_WORDS]>,
+pub fn render_frame<B>(
+    bg: &mut B,
+    fg: &SpinLock<B>,
     table: &table::Table,
     frame: usize,
-) {
+)
+    where B: AsMut<[u32]> + Send,
+{
     core::mem::swap(bg, &mut *fg.try_lock().expect("swap access"));
-    let bg = u32_as_u8_mut(*bg);
+    let bg = u32_as_u8_mut(bg.as_mut());
     m4vga::util::measurement::sig_d_set();
     self::render::render(table, bg, frame);
     m4vga::util::measurement::sig_d_clear();

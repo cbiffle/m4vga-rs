@@ -18,18 +18,18 @@ static mut TABLE: table::Table =
     [[table::Entry::zero(); table::TAB_WIDTH]; table::TAB_HEIGHT];
 
 pub struct State<'d> {
-    fg: SpinLock<&'d mut [u32; super::BUFFER_WORDS]>,
-    bg: Option<&'d mut [u32; super::BUFFER_WORDS]>,
+    fg: SpinLock<&'d mut [u32]>,
+    bg: Option<&'d mut [u32]>,
     table: &'d table::Table,
 }
 
 pub struct RasterState<'a, 'd> {
-    fg: &'a SpinLock<&'d mut [u32; super::BUFFER_WORDS]>,
+    fg: &'a SpinLock<&'d mut [u32]>,
 }
 
 pub struct RenderState<'a, 'd> {
-    fg: &'a SpinLock<&'d mut [u32; super::BUFFER_WORDS]>,
-    bg: &'d mut [u32; super::BUFFER_WORDS],
+    fg: &'a SpinLock<&'d mut [u32]>,
+    bg: &'d mut [u32],
     table: &'d table::Table,
 }
 
@@ -43,8 +43,8 @@ pub unsafe fn init() -> State<'static> {
     table::compute(table);
     let table = &*table;
 
-    let fg = SpinLock::new(&mut BUF0);
-    let bg = Some(&mut BUF1);
+    let fg = SpinLock::new(&mut BUF0 as &mut [u32]);
+    let bg = Some(&mut BUF1 as &mut [u32]);
     
     State { fg, bg, table }
 }

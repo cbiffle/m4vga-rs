@@ -6,7 +6,7 @@ use m4vga::util::spin_lock::SpinLock;
 
 #[wasm_bindgen]
 pub struct Demo {
-    fg: Vec<u32>,
+    fg: SpinLock<Vec<u32>>,
     bg: Vec<u32>,
 
     target: Vec<u32>,
@@ -32,7 +32,7 @@ impl Demo {
         fx::table::compute(&mut table);
 
         Demo {
-            fg: vec![RED_X4; fx::BUFFER_WORDS],
+            fg: SpinLock::new(vec![RED_X4; fx::BUFFER_WORDS]),
             bg: vec![RED_X4; fx::BUFFER_WORDS],
 
             target: vec![BLUE_X4; m4vga::rast::TARGET_BUFFER_SIZE / 4],
@@ -56,15 +56,7 @@ impl Demo {
     }
 
     pub fn step(&mut self) {
-        let mut bg =
-            arrayref::array_mut_ref!(&mut self.bg, 0, fx::BUFFER_WORDS);
-        let fg_lock = SpinLock::new(arrayref::array_mut_ref!(
-            &mut self.fg,
-            0,
-            fx::BUFFER_WORDS
-        ));
-
-        fx::render_frame(&mut bg, &fg_lock, &self.table, self.frame);
+        fx::render_frame(&mut self.bg, &self.fg, &self.table, self.frame);
 
         self.frame = (self.frame + 1) % 65536;
 
@@ -92,12 +84,10 @@ impl Demo {
                     repeat_lines: 0,
                     target_range: 0..0,
                 };
-                fx::raster_callback(ln, target, &mut ctx, &fg_lock);
+                fx::raster_callback(ln, target, &mut ctx, &self.fg);
             }
             secondary_unpack(&ctx, target.as_words(), target32);
         }
-
-        core::mem::swap(&mut self.fg, &mut self.bg);
     }
 }
 
@@ -141,7 +131,6 @@ fn secondary_unpack(
         },
         x => panic!("unsupported cycles_per_pixel: {}", x),
     }
-
 }
 
 fn unpack_color8(src: u8) -> u32 {
