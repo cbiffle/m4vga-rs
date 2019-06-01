@@ -1,9 +1,10 @@
-import { Demo } from "wasm-tunnel";
+import { Tunnel } from "wasm-tunnel";
+import * as wasm from "wasm-tunnel";
 import { memory } from "wasm-tunnel/wasm_tunnel_bg";
 
-const demo = Demo.new();
-const width = demo.width();
-const height = demo.height();
+const demo = Tunnel.new();
+const width = wasm.width();
+const height = wasm.height();
 
 const ptr = demo.framebuffer();
 const buffer = new Uint8ClampedArray(memory.buffer, ptr, 4 * width * height);

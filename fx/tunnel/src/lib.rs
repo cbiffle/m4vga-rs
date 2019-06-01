@@ -23,6 +23,27 @@ mod bare;
 #[cfg(target_os = "none")]
 pub use bare::*;
 
+pub trait Demo<'a> {
+    type Raster: Raster + 'a;
+    type Render: Render + 'a;
+
+    fn split(&'a mut self) -> (Self::Raster, Self::Render);
+}
+
+pub trait Raster {
+    fn raster_callback(
+        &mut self,
+        ln: usize,
+        target: &mut m4vga::rast::TargetBuffer,
+        ctx: &mut m4vga::rast::RasterCtx,
+        _: m4vga::priority::I0,
+    );
+}
+
+pub trait Render {
+    fn render_frame(&mut self, frame: usize);
+}
+
 pub struct State<B, T> {
     pub fg: SpinLock<B>,
     pub bg: B,
@@ -39,8 +60,14 @@ pub struct RenderState<'a, B, T> {
     table: &'a T,
 }
 
-impl<B, T> State<B, T> {
-    pub fn split(&mut self) -> (RasterState<B>, RenderState<B, T>) {
+impl<'a, B, T> Demo<'a> for State<B, T>
+where B: AsMut<[u32]> + Send + 'a,
+      T: core::borrow::Borrow<table::Table> + 'a,
+{
+    type Raster = RasterState<'a, B>;
+    type Render = RenderState<'a, B, T>;
+
+    fn split(&'a mut self) -> (Self::Raster, Self::Render) {
         (
             RasterState {
                 fg: &self.fg,
@@ -54,90 +81,64 @@ impl<B, T> State<B, T> {
     }
 }
 
-impl<'a, B> RasterState<'a, B>
+impl<'a, B> Raster for RasterState<'a, B>
 where B: AsMut<[u32]> + Send,
 {
-    pub fn raster_callback(
+    fn raster_callback(
         &mut self,
         ln: usize,
         target: &mut m4vga::rast::TargetBuffer,
         ctx: &mut m4vga::rast::RasterCtx,
         _: m4vga::priority::I0,
     ) {
-        raster_callback(
-            ln,
-            target,
-            ctx,
-            self.fg,
-        )
+        // Our image is slightly smaller than the display. Black the top and
+        // bottom borders.
+        if ln < 4 || ln > 595 {
+            m4vga::rast::solid_color_fill(target, ctx, 800, 0);
+            return;
+        }
+
+        let mut buf = self.fg.try_lock().expect("rast fg access");
+        let buf = buf.as_mut();
+
+        let ln = ln / SCALE;
+
+        if ln < HALF_HEIGHT {
+            m4vga::rast::direct::direct_color(
+                ln,
+                target,
+                ctx,
+                buf,
+                BUFFER_STRIDE,
+            );
+        } else {
+            m4vga::rast::direct::direct_color_mirror(
+                ln,
+                target,
+                ctx,
+                buf,
+                BUFFER_STRIDE,
+                HEIGHT,
+            );
+        }
+
+        ctx.cycles_per_pixel *= SCALE;
+        ctx.repeat_lines = SCALE - 1;
     }
 
 }
 
-impl<'a, B, T> RenderState<'a, B, T>
+impl<'a, B, T> Render for RenderState<'a, B, T>
 where B: AsMut<[u32]> + Send,
       T: core::borrow::Borrow<table::Table>,
 {
-    pub fn render_frame(&mut self, frame: usize) {
-        render_frame(
-            self.bg,
-            self.fg,
-            self.table.borrow(),
-            frame,
-        )
+    fn render_frame(&mut self, frame: usize) {
+        core::mem::swap(self.bg, &mut *self.fg.try_lock().expect("swap access"));
+        let bg = u32_as_u8_mut(self.bg.as_mut());
+        m4vga::util::measurement::sig_d_set();
+        self::render::render(self.table.borrow(), bg, frame);
+        m4vga::util::measurement::sig_d_clear();
     }
-}
-
-pub fn raster_callback<B>(
-    ln: usize,
-    target: &mut m4vga::rast::TargetBuffer,
-    ctx: &mut m4vga::rast::RasterCtx,
-    fg: &SpinLock<B>,
-)
-where B: AsMut<[u32]> + Send,
-{
-    // Our image is slightly smaller than the display. Black the top and
-    // bottom borders.
-    if ln < 4 || ln > 595 {
-        m4vga::rast::solid_color_fill(target, ctx, 800, 0);
-        return;
-    }
-
-    let mut buf = fg.try_lock().expect("rast fg access");
-    let buf = buf.as_mut();
-
-    let ln = ln / SCALE;
-
-    if ln < HALF_HEIGHT {
-        m4vga::rast::direct::direct_color(ln, target, ctx, buf, BUFFER_STRIDE);
-    } else {
-        m4vga::rast::direct::direct_color_mirror(
-            ln,
-            target,
-            ctx,
-            buf,
-            BUFFER_STRIDE,
-            HEIGHT,
-        );
-    }
-
-    ctx.cycles_per_pixel *= SCALE;
-    ctx.repeat_lines = SCALE - 1;
-}
-
-pub fn render_frame<B>(
-    bg: &mut B,
-    fg: &SpinLock<B>,
-    table: &table::Table,
-    frame: usize,
-)
-    where B: AsMut<[u32]> + Send,
-{
-    core::mem::swap(bg, &mut *fg.try_lock().expect("swap access"));
-    let bg = u32_as_u8_mut(bg.as_mut());
-    m4vga::util::measurement::sig_d_set();
-    self::render::render(table, bg, frame);
-    m4vga::util::measurement::sig_d_clear();
 }
 
 fn u32_as_u8_mut(slice: &mut [u32]) -> &mut [u8] {

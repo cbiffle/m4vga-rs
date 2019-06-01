@@ -9,6 +9,7 @@ extern crate panic_halt;
 extern crate panic_itm;
 
 use m4vga_fx_tunnel as lib;
+use lib::{Demo, Raster, Render};
 
 use stm32f4;
 use stm32f4::stm32f407::interrupt;

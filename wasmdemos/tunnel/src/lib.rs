@@ -4,55 +4,52 @@ use wasm_bindgen::prelude::*;
 use m4vga_fx_tunnel as fx;
 use m4vga::util::spin_lock::SpinLock;
 
-#[wasm_bindgen]
-pub struct Demo {
-    state: fx::State<Vec<u32>, Box<fx::table::Table>>,
+use fx::{Raster, Render};
 
-    target: Vec<u32>,
-    framebuffer: Vec<u32>,
-    frame: usize,
-}
+const FIXED_WIDTH: usize = 800;
+const FIXED_HEIGHT: usize = 600;
 
 const RED_X4: u32 = 0x03_03_03_03;
 const BLUE_X4: u32 = 0x30_30_30_30;
 const GREEN32: u32 = 0xFF_00_FF_00;
 
 #[wasm_bindgen]
-impl Demo {
-    pub fn new() -> Self {
-        // Good a place as any...
-        self::utils::set_panic_hook();
+pub fn width() -> usize {
+    FIXED_WIDTH
+}
 
-        let mut table = Box::new([[fx::table::Entry::zero(); fx::table::TAB_WIDTH];
-            fx::table::TAB_HEIGHT]);
-        fx::table::compute(&mut table);
+#[wasm_bindgen]
+pub fn height() -> usize {
+    FIXED_HEIGHT
+}
 
-        Demo {
-            state: fx::State {
-                fg: SpinLock::new(vec![RED_X4; fx::BUFFER_WORDS]),
-                bg: vec![RED_X4; fx::BUFFER_WORDS],
-                table,
-            },
+pub struct Sim<S> {
+    state: S,
 
+    target: Vec<u32>,
+    framebuffer: Vec<u32>,
+    frame: usize,
+}
+
+impl<S> From<S> for Sim<S> {
+    fn from(state: S) -> Self {
+        Self {
+            state,
             target: vec![BLUE_X4; m4vga::rast::TARGET_BUFFER_SIZE / 4],
-            framebuffer: vec![GREEN32; fx::NATIVE_WIDTH * fx::NATIVE_HEIGHT],
+            framebuffer: vec![GREEN32; FIXED_WIDTH * FIXED_HEIGHT],
             frame: 0,
         }
     }
+}
 
+impl<S> Sim<S> {
     pub fn framebuffer(&self) -> *const u32 {
         self.framebuffer.as_ptr()
     }
+}
 
-    pub fn width(&self) -> u32 {
-        fx::NATIVE_WIDTH as u32
-    }
-
-    pub fn height(&self) -> u32 {
-        fx::NATIVE_HEIGHT as u32
-    }
-
-    pub fn step(&mut self) {
+impl<'a, S> Sim<S> where S: fx::Demo<'a> {
+    pub fn step(&'a mut self) {
         // Safety: wasm is not a concurrent environment right now, so preemption
         // is not an issue.
         let priority = unsafe { m4vga::priority::I0::new() };
@@ -89,6 +86,36 @@ impl Demo {
             }
             secondary_unpack(&ctx, target.as_words(), target32);
         }
+    }
+}
+
+
+#[wasm_bindgen]
+pub struct Tunnel(Sim<fx::State<Vec<u32>, Box<fx::table::Table>>>);
+
+#[wasm_bindgen]
+impl Tunnel {
+    pub fn new() -> Self {
+        // Good a place as any...
+        self::utils::set_panic_hook();
+
+        let mut table = Box::new([[fx::table::Entry::zero(); fx::table::TAB_WIDTH];
+            fx::table::TAB_HEIGHT]);
+        fx::table::compute(&mut table);
+
+        Tunnel(fx::State {
+            fg: SpinLock::new(vec![RED_X4; fx::BUFFER_WORDS]),
+            bg: vec![RED_X4; fx::BUFFER_WORDS],
+            table,
+        }.into())
+    }
+
+    pub fn framebuffer(&self) -> *const u32 {
+        self.0.framebuffer()
+    }
+
+    pub fn step(&mut self) {
+        self.0.step()
     }
 }
 
