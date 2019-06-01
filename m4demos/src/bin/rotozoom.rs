@@ -38,7 +38,7 @@ type BufferBand = [Row; HALF_HEIGHT];
 fn main() -> ! {
     // Safety: as long as these are the *only* mutable references we produce to
     // those statics, we're good.
-    let mut buf = RaceBuffer::new([
+    let mut buf: RaceBuffer<&mut [Row], Row> = RaceBuffer::new([
         {
             static mut TOP: BufferBand = [[0; BUFFER_STRIDE]; HALF_HEIGHT];
             // Safety: because of scoping this is clearly the only mutable

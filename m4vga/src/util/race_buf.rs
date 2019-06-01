@@ -1,6 +1,7 @@
 use core::marker::PhantomData;
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicUsize, Ordering};
+use core::borrow::Borrow;
 
 use crate::priority;
 
@@ -10,6 +11,14 @@ use crate::priority;
 ///    fit into any single RAM.
 /// 2. It checks for aliasing on a scanline granularity so rendering can race
 ///    scanout more aggressively.
+///
+/// # Parameters
+///
+/// `S` is the segment type, which must implement `Borrow<[R]>` and
+/// `AsMut<[R]>`. In contexts where storage is allocated statically, this is
+/// probably `&'static mut R`.
+///
+/// `R` is the row (scanline) type, typically an array.
 ///
 /// # Use of priority tokens
 ///
@@ -24,25 +33,27 @@ use crate::priority;
 ///
 /// This simplifies the implementation, by ensuring that read operations cannot
 /// be preempted by write operations.
-pub struct RaceBuffer<R: 'static> {
-    segments: [&'static mut [R]; 2],
+pub struct RaceBuffer<S, R: 'static> {
+    segments: [S; 2],
     write_mark: AtomicUsize,
+    _marker: PhantomData<&'static mut R>,
 }
 
-impl<R: 'static> RaceBuffer<R> {
+impl<S, R: 'static> RaceBuffer<S, R> {
     /// Creates a `RaceBuffer` from two static bands of rows.
     ///
     /// The bands need not be the same length.
-    pub fn new(segments: [&'static mut [R]; 2]) -> Self {
+    pub fn new(segments: [S; 2]) -> Self {
         RaceBuffer {
             segments,
             write_mark: 0.into(),
+            _marker: PhantomData,
         }
     }
 
     /// Generates a `RaceReader` and `RaceWriter` for this buffer, which can
     /// then be distributed to the renderer and rasterizer.
-    pub fn split(&mut self) -> (RaceReader<R>, RaceWriter<R>) {
+    pub fn split(&mut self) -> (RaceReader<S, R>, RaceWriter<S, R>) {
         (
             RaceReader {
                 // Safety: this is an &mut, it cannot be null
@@ -59,20 +70,22 @@ impl<R: 'static> RaceBuffer<R> {
 }
 
 /// Pulls rendered scanlines from a `RaceBuffer`.
-pub struct RaceReader<'a, R: 'static> {
-    buf: NonNull<RaceBuffer<R>>,
+pub struct RaceReader<'a, S, R: 'static> {
+    buf: NonNull<RaceBuffer<S, R>>,
     _life: PhantomData<&'a ()>,
 }
 
-unsafe impl<'a, R: 'static> Send for RaceReader<'a, R> {}
+unsafe impl<'a, S, R: 'static> Send for RaceReader<'a, S, R> {}
 
-impl<'a, R: 'static> RaceReader<'a, R> {
+impl<'a, S, R: 'static> RaceReader<'a, S, R>
+where S: Borrow<[R]>,
+{
     fn load_writer_progress(&self) -> usize {
         unsafe { &self.buf.as_ref().write_mark }.load(Ordering::Relaxed)
     }
 
     fn boundary(&self) -> usize {
-        unsafe { &self.buf.as_ref().segments[0] }.len()
+        unsafe { &self.buf.as_ref().segments[0] }.borrow().len()
     }
 
     /// Gets a reference to a scanline, identified by `line_number`.
@@ -99,7 +112,7 @@ impl<'a, R: 'static> RaceReader<'a, R> {
 
             // Safety: the RaceWriter will only vend mutable references to lines
             // above `rendered`.
-            unsafe { &self.buf.as_ref().segments[seg_index][line_number] }
+            unsafe { &self.buf.as_ref().segments[seg_index].borrow()[line_number] }
         } else {
             panic!(
                 "tearing: scanout reached {} but rendering only {}",
@@ -110,18 +123,20 @@ impl<'a, R: 'static> RaceReader<'a, R> {
 }
 
 /// Vends unrendered scanlines and tracks when they're completed.
-pub struct RaceWriter<'a, R: 'static> {
-    buf: NonNull<RaceBuffer<R>>,
+pub struct RaceWriter<'a, S, R: 'static> {
+    buf: NonNull<RaceBuffer<S, R>>,
     _life: PhantomData<&'a ()>,
 }
 
-impl<'a, R: 'static> RaceWriter<'a, R> {
+impl<'a, S, R: 'static> RaceWriter<'a, S, R>
+where S: Borrow<[R]> + AsMut<[R]>,
+{
     fn load_writer_progress(&self) -> usize {
         unsafe { &self.buf.as_ref().write_mark }.load(Ordering::Relaxed)
     }
 
     fn boundary(&self) -> usize {
-        unsafe { &self.buf.as_ref().segments[0] }.len()
+        unsafe { &self.buf.as_ref().segments[0] }.borrow().len()
     }
 
     /// Gets the next scanline for rendering.
@@ -148,7 +163,7 @@ impl<'a, R: 'static> RaceWriter<'a, R> {
         let buf = unsafe { self.buf.as_mut() };
         GenGuard {
             counter: &buf.write_mark,
-            data: &mut buf.segments[seg_index][line_number],
+            data: &mut buf.segments[seg_index].as_mut()[line_number],
             _not_sync_send: PhantomData,
         }
     }
