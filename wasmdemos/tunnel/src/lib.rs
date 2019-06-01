@@ -1,10 +1,10 @@
 mod utils;
 
 use wasm_bindgen::prelude::*;
+use m4vga_fx_common::{Demo, Raster, Render};
 use m4vga_fx_tunnel as fx;
 use m4vga::util::spin_lock::SpinLock;
 
-use fx::{Raster, Render};
 
 const FIXED_WIDTH: usize = 800;
 const FIXED_HEIGHT: usize = 600;
@@ -48,7 +48,7 @@ impl<S> Sim<S> {
     }
 }
 
-impl<'a, S> Sim<S> where S: fx::Demo<'a> {
+impl<'a, S> Sim<S> where S: Demo<'a> {
     pub fn step(&'a mut self) {
         // Safety: wasm is not a concurrent environment right now, so preemption
         // is not an issue.

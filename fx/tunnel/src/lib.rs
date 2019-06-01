@@ -1,6 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use m4vga::util::spin_lock::SpinLock;
+use m4vga_fx_common::{Demo, Raster, Render};
 
 pub mod table;
 pub mod render;
@@ -22,27 +23,6 @@ pub const BUFFER_STRIDE: usize = WIDTH / 4;
 mod bare;
 #[cfg(target_os = "none")]
 pub use bare::*;
-
-pub trait Demo<'a> {
-    type Raster: Raster + 'a;
-    type Render: Render + 'a;
-
-    fn split(&'a mut self) -> (Self::Raster, Self::Render);
-}
-
-pub trait Raster {
-    fn raster_callback(
-        &mut self,
-        ln: usize,
-        target: &mut m4vga::rast::TargetBuffer,
-        ctx: &mut m4vga::rast::RasterCtx,
-        _: m4vga::priority::I0,
-    );
-}
-
-pub trait Render {
-    fn render_frame(&mut self, frame: usize);
-}
 
 pub struct State<B, T> {
     pub fg: SpinLock<B>,

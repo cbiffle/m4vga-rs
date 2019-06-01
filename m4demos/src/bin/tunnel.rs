@@ -8,8 +8,8 @@ extern crate panic_halt;
 #[cfg(feature = "panic-itm")]
 extern crate panic_itm;
 
+use m4vga_fx_common::{Demo, Raster, Render};
 use m4vga_fx_tunnel as lib;
-use lib::{Demo, Raster, Render};
 
 use stm32f4;
 use stm32f4::stm32f407::interrupt;

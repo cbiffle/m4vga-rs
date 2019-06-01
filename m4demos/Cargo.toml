@@ -9,6 +9,7 @@ workspace = ".."
 default = ["panic-itm"]
 
 [dependencies]
+m4vga-fx-common = {path = "../fx/common", default-features = false}
 m4vga-fx-tunnel = {path = "../fx/tunnel", default-features = false}
 m4vga = {path = "../m4vga"}
 cortex-m-rt = "0.6.7"
