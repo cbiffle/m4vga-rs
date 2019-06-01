@@ -2,14 +2,24 @@ mod utils;
 
 use wasm_bindgen::prelude::*;
 use m4vga_fx_tunnel as fx;
+use m4vga::util::spin_lock::SpinLock;
 
 #[wasm_bindgen]
 pub struct Demo {
-    framebuffer8: Vec<u8>,
-    framebuffer32: Vec<u32>,
+    fg: Vec<u32>,
+    bg: Vec<u32>,
+
+    target: Vec<u32>,
+
+    framebuffer: Vec<u32>,
+
     table: fx::table::Table,
     frame: usize,
 }
+
+const RED_X4: u32 = 0x03_03_03_03;
+const BLUE_X4: u32 = 0x30_30_30_30;
+const GREEN32: u32 = 0xFF_00_FF_00;
 
 #[wasm_bindgen]
 impl Demo {
@@ -22,87 +32,116 @@ impl Demo {
         fx::table::compute(&mut table);
 
         Demo {
-            framebuffer8: vec![0b11_00_11; fx::WIDTH * fx::HEIGHT / 2],
-            framebuffer32: vec![0xFF_00_FF_00; fx::WIDTH * fx::HEIGHT],
+            fg: vec![RED_X4; fx::BUFFER_WORDS],
+            bg: vec![RED_X4; fx::BUFFER_WORDS],
+
+            target: vec![BLUE_X4; m4vga::rast::TARGET_BUFFER_SIZE / 4],
+
+            framebuffer: vec![GREEN32; fx::NATIVE_WIDTH * fx::NATIVE_HEIGHT],
             table,
             frame: 0,
         }
     }
 
     pub fn framebuffer(&self) -> *const u32 {
-        self.framebuffer32.as_ptr()
+        self.framebuffer.as_ptr()
     }
 
     pub fn width(&self) -> u32 {
-        fx::WIDTH as u32
+        fx::NATIVE_WIDTH as u32
     }
 
     pub fn height(&self) -> u32 {
-        fx::HEIGHT as u32
+        fx::NATIVE_HEIGHT as u32
     }
 
     pub fn step(&mut self) {
-        fx::render::render(&self.table, &mut self.framebuffer8, self.frame);
+        let mut bg =
+            arrayref::array_mut_ref!(&mut self.bg, 0, fx::BUFFER_WORDS);
+        let fg_lock = SpinLock::new(arrayref::array_mut_ref!(
+            &mut self.fg,
+            0,
+            fx::BUFFER_WORDS
+        ));
+
+        fx::render_frame(&mut bg, &fg_lock, &self.table, self.frame);
 
         self.frame = (self.frame + 1) % 65536;
 
-        // Top half of display.
-        for (ln, target) in self.framebuffer32.chunks_mut(fx::WIDTH).enumerate()
-        {
-            if ln < (4 / 2) || ln > (595 / 2) {
-                solid_color_fill(target, 400, 0);
-                continue;
-            }
+        let mut ctx = m4vga::rast::RasterCtx {
+            cycles_per_pixel: 4,
+            repeat_lines: 0,
+            target_range: 0..0,
+        };
 
-            if ln < fx::HALF_HEIGHT {
-                direct_color(ln, target, &self.framebuffer8, fx::BUFFER_STRIDE);
+        let target = m4vga::rast::TargetBuffer::from_array_mut(
+            arrayref::array_mut_ref!(
+                self.target.as_mut_slice(),
+                0,
+                m4vga::rast::TARGET_BUFFER_SIZE / 4
+            ),
+        );
+        for (ln, target32) in
+            self.framebuffer.chunks_mut(fx::NATIVE_WIDTH).enumerate()
+        {
+            if ctx.repeat_lines > 0 {
+                ctx.repeat_lines -= 1;
             } else {
-                direct_color_mirror(
-                    ln,
-                    target,
-                    &self.framebuffer8,
-                    fx::BUFFER_STRIDE,
-                    fx::HEIGHT,
-                );
+                ctx = m4vga::rast::RasterCtx {
+                    cycles_per_pixel: 4,
+                    repeat_lines: 0,
+                    target_range: 0..0,
+                };
+                fx::raster_callback(ln, target, &mut ctx, &fg_lock);
+            }
+            secondary_unpack(&ctx, target.as_words(), target32);
+        }
+
+        core::mem::swap(&mut self.fg, &mut self.bg);
+    }
+}
+
+fn secondary_unpack(
+    ctx: &m4vga::rast::RasterCtx,
+    src: &[u32],
+    dest: &mut [u32],
+) {
+    match ctx.cycles_per_pixel {
+        // Full resolution.
+        4 => {
+            for (dest4, &src) in
+                dest[ctx.target_range.clone()].chunks_mut(4).zip(src)
+            {
+                dest4[0] = unpack_color8(src as u8);
+                dest4[1] = unpack_color8((src >> 8) as u8);
+                dest4[2] = unpack_color8((src >> 16) as u8);
+                dest4[3] = unpack_color8((src >> 24) as u8);
             }
         }
+        // Horizontal pixel doubling.
+        8 => {
+            for (dest8, &src) in dest.chunks_mut(8).zip(src) {
+                dest8[0] = unpack_color8(src as u8);
+                dest8[1] = unpack_color8(src as u8);
+                dest8[2] = unpack_color8((src >> 8) as u8);
+                dest8[3] = unpack_color8((src >> 8) as u8);
+                dest8[4] = unpack_color8((src >> 16) as u8);
+                dest8[5] = unpack_color8((src >> 16) as u8);
+                dest8[6] = unpack_color8((src >> 24) as u8);
+                dest8[7] = unpack_color8((src >> 24) as u8);
+            }
+        }
+        // Solid color fill.
+        3200 => {
+            assert_eq!(ctx.target_range, 0..1);
+            let val = unpack_color8(src[0] as u8);
+            for pixel in dest {
+                *pixel = val;
+            }
+        },
+        x => panic!("unsupported cycles_per_pixel: {}", x),
     }
-}
 
-fn solid_color_fill(target: &mut [u32], _width: usize, color8: u8) {
-    let color = unpack_color8(color8);
-    for t in target {
-        *t = color
-    }
-}
-
-fn direct_color(
-    line_number: usize,
-    target: &mut [u32],
-    packed: &[u8],
-    stride_words: usize,
-) {
-    let stride = stride_words * 4;
-    let offset = line_number * stride;
-    for (dest, src) in target.iter_mut().zip(&packed[offset..offset + stride]) {
-        *dest = unpack_color8(*src);
-    }
-}
-
-fn direct_color_mirror(
-    line_number: usize,
-    target: &mut [u32],
-    packed: &[u8],
-    stride_words: usize,
-    height: usize,
-) {
-    let stride = stride_words * 4;
-    let line_number = height - line_number - 1;
-    let offset = line_number * stride;
-    let source = packed[offset..offset + stride].iter().rev();
-    for (dest, src) in target.iter_mut().zip(source) {
-        *dest = unpack_color8(*src);
-    }
 }
 
 fn unpack_color8(src: u8) -> u32 {

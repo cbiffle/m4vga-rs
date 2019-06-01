@@ -5,8 +5,8 @@ use m4vga::util::spin_lock::SpinLock;
 pub mod table;
 pub mod render;
 
-const NATIVE_WIDTH: usize = 800;
-const NATIVE_HEIGHT: usize = 600;
+pub const NATIVE_WIDTH: usize = 800;
+pub const NATIVE_HEIGHT: usize = 600;
 const SCALE: usize = 2;
 
 pub const WIDTH: usize = NATIVE_WIDTH / SCALE;
@@ -15,7 +15,7 @@ pub const HALF_WIDTH: usize = WIDTH / 2;
 pub const HALF_HEIGHT: usize = HEIGHT / 2;
 
 const BUFFER_SIZE: usize = WIDTH * HALF_HEIGHT;
-const BUFFER_WORDS: usize = BUFFER_SIZE / 4;
+pub const BUFFER_WORDS: usize = BUFFER_SIZE / 4;
 pub const BUFFER_STRIDE: usize = WIDTH / 4;
 
 #[cfg(target_os = "none")]
@@ -43,7 +43,14 @@ pub fn raster_callback(
     if ln < HALF_HEIGHT {
         m4vga::rast::direct::direct_color(ln, target, ctx, *buf, BUFFER_STRIDE);
     } else {
-        m4vga::rast::direct::direct_color_mirror(ln, target, ctx, *buf, BUFFER_STRIDE, HEIGHT);
+        m4vga::rast::direct::direct_color_mirror(
+            ln,
+            target,
+            ctx,
+            *buf,
+            BUFFER_STRIDE,
+            HEIGHT,
+        );
     }
 
     ctx.cycles_per_pixel *= SCALE;
@@ -56,10 +63,7 @@ pub fn render_frame<'buf>(
     table: &table::Table,
     frame: usize,
 ) {
-    core::mem::swap(
-        bg,
-        &mut *fg.try_lock().expect("swap access"),
-    );
+    core::mem::swap(bg, &mut *fg.try_lock().expect("swap access"));
     let bg = u32_as_u8_mut(*bg);
     m4vga::util::measurement::sig_d_set();
     self::render::render(table, bg, frame);

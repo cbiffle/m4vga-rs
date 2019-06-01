@@ -20,6 +20,7 @@ pub const TARGET_BUFFER_SIZE: usize = super::MAX_PIXELS_PER_LINE + 32;
 
 /// The type given to raster callbacks by reference, to fill with pixels. This
 /// is word-aligned but we usually pun it as `u8`.
+#[repr(transparent)]
 pub struct TargetBuffer([u32; TARGET_BUFFER_SIZE / 4]);
 
 impl TargetBuffer {
@@ -29,6 +30,13 @@ impl TargetBuffer {
 
     pub fn as_words_mut(&mut self) -> &mut [u32; TARGET_BUFFER_SIZE / 4] {
         &mut self.0
+    }
+
+    pub fn from_array_mut(array: &mut [u32; TARGET_BUFFER_SIZE / 4]) -> &mut Self {
+        // Safety: repr(transparent) makes this okay.
+        unsafe {
+            core::mem::transmute(array)
+        }
     }
 }
 
