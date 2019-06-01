@@ -6,14 +6,10 @@ use m4vga::util::spin_lock::SpinLock;
 
 #[wasm_bindgen]
 pub struct Demo {
-    fg: SpinLock<Vec<u32>>,
-    bg: Vec<u32>,
+    state: fx::State<Vec<u32>, Box<fx::table::Table>>,
 
     target: Vec<u32>,
-
     framebuffer: Vec<u32>,
-
-    table: fx::table::Table,
     frame: usize,
 }
 
@@ -27,18 +23,19 @@ impl Demo {
         // Good a place as any...
         self::utils::set_panic_hook();
 
-        let mut table = [[fx::table::Entry::zero(); fx::table::TAB_WIDTH];
-            fx::table::TAB_HEIGHT];
+        let mut table = Box::new([[fx::table::Entry::zero(); fx::table::TAB_WIDTH];
+            fx::table::TAB_HEIGHT]);
         fx::table::compute(&mut table);
 
         Demo {
-            fg: SpinLock::new(vec![RED_X4; fx::BUFFER_WORDS]),
-            bg: vec![RED_X4; fx::BUFFER_WORDS],
+            state: fx::State {
+                fg: SpinLock::new(vec![RED_X4; fx::BUFFER_WORDS]),
+                bg: vec![RED_X4; fx::BUFFER_WORDS],
+                table,
+            },
 
             target: vec![BLUE_X4; m4vga::rast::TARGET_BUFFER_SIZE / 4],
-
             framebuffer: vec![GREEN32; fx::NATIVE_WIDTH * fx::NATIVE_HEIGHT],
-            table,
             frame: 0,
         }
     }
@@ -56,8 +53,12 @@ impl Demo {
     }
 
     pub fn step(&mut self) {
-        fx::render_frame(&mut self.bg, &self.fg, &self.table, self.frame);
+        // Safety: wasm is not a concurrent environment right now, so preemption
+        // is not an issue.
+        let priority = unsafe { m4vga::priority::I0::new() };
+        let (mut raster, mut render) = self.state.split();
 
+        render.render_frame(self.frame);
         self.frame = (self.frame + 1) % 65536;
 
         let mut ctx = m4vga::rast::RasterCtx {
@@ -84,7 +85,7 @@ impl Demo {
                     repeat_lines: 0,
                     target_range: 0..0,
                 };
-                fx::raster_callback(ln, target, &mut ctx, &self.fg);
+                raster.raster_callback(ln, target, &mut ctx, priority);
             }
             secondary_unpack(&ctx, target.as_words(), target32);
         }

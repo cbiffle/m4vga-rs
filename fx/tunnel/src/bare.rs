@@ -17,84 +17,18 @@ static mut BUF1: [u32; super::BUFFER_WORDS] = [0; super::BUFFER_WORDS];
 static mut TABLE: table::Table =
     [[table::Entry::zero(); table::TAB_WIDTH]; table::TAB_HEIGHT];
 
-pub struct State<'d> {
-    fg: SpinLock<&'d mut [u32]>,
-    bg: Option<&'d mut [u32]>,
-    table: &'d table::Table,
-}
-
-pub struct RasterState<'a, 'd> {
-    fg: &'a SpinLock<&'d mut [u32]>,
-}
-
-pub struct RenderState<'a, 'd> {
-    fg: &'a SpinLock<&'d mut [u32]>,
-    bg: &'d mut [u32],
-    table: &'d table::Table,
-}
-
 /// Initializes a `State` from static context.
 ///
 /// # Safety
 ///
 /// This is safe as long as it's only called once.
-pub unsafe fn init() -> State<'static> {
+pub unsafe fn init() -> super::State<&'static mut [u32], &'static table::Table> {
     let table = &mut TABLE;
     table::compute(table);
     let table = &*table;
 
     let fg = SpinLock::new(&mut BUF0 as &mut [u32]);
-    let bg = Some(&mut BUF1 as &mut [u32]);
+    let bg = &mut BUF1 as &mut [u32];
     
-    State { fg, bg, table }
-}
-
-impl<'d> State<'d> {
-    pub fn split(&mut self) -> (RasterState<'_, 'd>, RenderState<'_, 'd>) {
-        (
-            RasterState {
-                fg: &self.fg,
-            },
-            RenderState {
-                fg: &self.fg,
-                bg: self.bg.take().unwrap(),
-                table: self.table,
-            },
-        )
-    }
-}
-
-impl<'a, 'd> RasterState<'a, 'd> {
-    pub fn raster_callback(
-        &mut self,
-        ln: usize,
-        target: &mut m4vga::rast::TargetBuffer,
-        ctx: &mut m4vga::rast::RasterCtx,
-        _: m4vga::priority::I0,
-    ) {
-        super::raster_callback(
-            ln,
-            target,
-            ctx,
-            self.fg,
-        )
-    }
-        
-}
-
-impl<'a, 'd> RenderState<'a, 'd> {
-    pub fn render_loop(&mut self, vga: &mut m4vga::Vga<m4vga::Live>) -> ! {
-        vga.video_on();
-        let mut frame = 0;
-        loop {
-            vga.sync_to_vblank();
-            super::render_frame(
-                &mut self.bg,
-                self.fg,
-                self.table,
-                frame,
-            );
-            frame = (frame + 1) % 65536;
-        }
-    }
+    super::State { fg, bg, table }
 }

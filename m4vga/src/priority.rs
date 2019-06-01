@@ -21,7 +21,7 @@ pub struct I1(NotSyncOrSend);
 pub struct Thread(NotSyncOrSend);
 
 impl I0 {
-    pub(crate) unsafe fn new() -> Self {
+    pub unsafe fn new() -> Self {
         I0(PhantomData)
     }
 }

@@ -20,6 +20,7 @@ use stm32f4::stm32f407::interrupt;
 fn main() -> ! {
     let mut state = unsafe { lib::init() };
     let (mut raster_state, mut render_state) = state.split();
+    let mut frame = 0;
 
     // Give the driver its hardware resources...
     m4vga::take_hardware()
@@ -31,7 +32,12 @@ fn main() -> ! {
                 raster_state.raster_callback(ln, tgt, ctx, p0)
             },
             // This closure contains the main loop of the program.
-            |vga| render_state.render_loop(vga),
+            |vga| loop {
+                vga.sync_to_vblank();
+                render_state.render_frame(frame);
+                frame = (frame + 1) % 65536;
+                vga.video_on();
+            },
         )
 }
 

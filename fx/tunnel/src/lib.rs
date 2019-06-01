@@ -23,6 +23,71 @@ mod bare;
 #[cfg(target_os = "none")]
 pub use bare::*;
 
+pub struct State<B, T> {
+    pub fg: SpinLock<B>,
+    pub bg: B,
+    pub table: T,
+}
+
+pub struct RasterState<'a, B> {
+    fg: &'a SpinLock<B>,
+}
+
+pub struct RenderState<'a, B, T> {
+    fg: &'a SpinLock<B>,
+    bg: &'a mut B,
+    table: &'a T,
+}
+
+impl<B, T> State<B, T> {
+    pub fn split(&mut self) -> (RasterState<B>, RenderState<B, T>) {
+        (
+            RasterState {
+                fg: &self.fg,
+            },
+            RenderState {
+                fg: &self.fg,
+                bg: &mut self.bg,
+                table: &self.table,
+            },
+        )
+    }
+}
+
+impl<'a, B> RasterState<'a, B>
+where B: AsMut<[u32]> + Send,
+{
+    pub fn raster_callback(
+        &mut self,
+        ln: usize,
+        target: &mut m4vga::rast::TargetBuffer,
+        ctx: &mut m4vga::rast::RasterCtx,
+        _: m4vga::priority::I0,
+    ) {
+        raster_callback(
+            ln,
+            target,
+            ctx,
+            self.fg,
+        )
+    }
+
+}
+
+impl<'a, B, T> RenderState<'a, B, T>
+where B: AsMut<[u32]> + Send,
+      T: core::borrow::Borrow<table::Table>,
+{
+    pub fn render_frame(&mut self, frame: usize) {
+        render_frame(
+            self.bg,
+            self.fg,
+            self.table.borrow(),
+            frame,
+        )
+    }
+}
+
 pub fn raster_callback<B>(
     ln: usize,
     target: &mut m4vga::rast::TargetBuffer,
