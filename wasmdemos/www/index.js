@@ -18,6 +18,7 @@ const playPauseButton = document.getElementById("run-pause");
 
 const play = () => {
   playPauseButton.textContent = "⏸";
+  document.getElementById("single-step").disabled = true;
   renderLoop();
 };
 
@@ -25,6 +26,7 @@ const pause = () => {
   playPauseButton.textContent = "▶";
   cancelAnimationFrame(animationId);
   animationId = null;
+  document.getElementById("single-step").disabled = false;
 };
 
 const isPaused = () => {
@@ -37,6 +39,11 @@ playPauseButton.addEventListener("click", event => {
   } else {
     pause();
   }
+});
+
+document.getElementById("single-step").addEventListener("click", event => {
+  demo.step();
+  drawFramebuffer();
 });
 
 const ctx = canvas.getContext('2d');
