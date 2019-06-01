@@ -14,19 +14,45 @@ const canvas = document.getElementById("demo-canvas");
 canvas.height = height;
 canvas.width = width;
 
+const playPauseButton = document.getElementById("run-pause");
+
+const play = () => {
+  playPauseButton.textContent = "⏸";
+  renderLoop();
+};
+
+const pause = () => {
+  playPauseButton.textContent = "▶";
+  cancelAnimationFrame(animationId);
+  animationId = null;
+};
+
+const isPaused = () => {
+  return animationId === null;
+};
+
+playPauseButton.addEventListener("click", event => {
+  if (isPaused()) {
+    play();
+  } else {
+    pause();
+  }
+});
+
 const ctx = canvas.getContext('2d');
+
+let animationId = null;
 
 const renderLoop = () => {
   demo.step();
 
   drawFramebuffer();
 
-  requestAnimationFrame(renderLoop);
+  animationId = requestAnimationFrame(renderLoop);
 };
 
 const drawFramebuffer = () => {
   ctx.putImageData(image, 0, 0);
 };
 
-drawFramebuffer();
-requestAnimationFrame(renderLoop);
+play();
