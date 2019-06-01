@@ -44,7 +44,6 @@ version = "0.6.0"
 
 [build-dependencies]
 cc = "1.0"
-stlmunge = { path = "../stlmunge" }
 
 # Setting these prevents Cargo from trying to test or bench the library crate,
 # which `cargo fix` tries to do automatically -- so this enables `cargo fix`.
@@ -52,43 +51,3 @@ stlmunge = { path = "../stlmunge" }
 test = false
 bench = false
 
-# Binaries
-
-# We have to provide an explicit section per binary so we can set `test` and
-# `bench` to `false` and enable `cargo fix` and equivalents.
-
-[[bin]]
-name = "conway"
-test = false
-bench = false
-
-[[bin]]
-name = "hires_text"
-test = false
-bench = false
-
-[[bin]]
-name = "horiz_tp"
-path = "src/bin/horiz_tp.rs"
-test = false
-bench = false
-
-[[bin]]
-name = "poly3"
-test = false
-bench = false
-
-[[bin]]
-name = "rook"
-test = false
-bench = false
-
-[[bin]]
-name = "rotozoom"
-test = false
-bench = false
-
-[[bin]]
-name = "xor_pattern"
-test = false
-bench = false

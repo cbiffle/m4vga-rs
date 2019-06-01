@@ -11,7 +11,7 @@ members = [
 
   "wasmdemos/tunnel",
 ]
-default-members = ["m4vga", "m4demos"]
+default-members = ["m4demos"]
 
 [profile.release]
 codegen-units = 1 # better optimizations

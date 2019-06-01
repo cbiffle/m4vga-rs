@@ -14,14 +14,71 @@ m4vga = {path = "../m4vga"}
 cortex-m-rt = "0.6.7"
 panic-itm = {version = "0.4.0", optional = true}
 panic-halt = {version = "0.2.0", optional = true}
+font_10x16 = {path = "../font_10x16"}
+math = {path = "../math"}
+gfx = {path = "../gfx"}
+rand = {version = "0.6", default-features = false}
+
+[target.thumbv7em-none-eabihf.dependencies]
+cortex-m = "0.5.8"
+cortex-m-rt = "0.6.7"
+cortex-m-semihosting = "0.3.2"
+panic-itm = {version = "0.4.0", optional = true}
+panic-halt = {version = "0.2.0", optional = true}
+libm = "0.1.2"
+r0 = "0.2.2"
 
 [dependencies.stm32f4]
 default-features = false
 features = ["rt", "stm32f407"]
 version = "0.6.0"
 
+[build-dependencies]
+cc = "1.0"
+stlmunge = { path = "../stlmunge" }
+
+# Binaries
+
+# We have to provide an explicit section per binary so we can set `test` and
+# `bench` to `false` and enable `cargo fix` and equivalents.
+
 [[bin]]
 name = "tunnel"
 test = false
 bench = false
 
+[[bin]]
+name = "conway"
+test = false
+bench = false
+
+[[bin]]
+name = "hires_text"
+test = false
+bench = false
+
+[[bin]]
+name = "horiz_tp"
+path = "src/bin/horiz_tp.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "poly3"
+test = false
+bench = false
+
+[[bin]]
+name = "rook"
+test = false
+bench = false
+
+[[bin]]
+name = "rotozoom"
+test = false
+bench = false
+
+[[bin]]
+name = "xor_pattern"
+test = false
+bench = false
