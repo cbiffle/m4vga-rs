@@ -1,6 +1,6 @@
-import { Tunnel } from "wasm-tunnel";
-import * as wasm from "wasm-tunnel";
-import { memory } from "wasm-tunnel/wasm_tunnel_bg";
+import { Tunnel } from "m4vga-wasm-demos";
+import * as wasm from "m4vga-wasm-demos";
+import { memory } from "m4vga-wasm-demos/m4vga_wasm_demos_bg";
 
 const demo = Tunnel.new();
 const width = wasm.width();

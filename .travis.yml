@@ -17,8 +17,8 @@ matrix:
         - rustup target add wasm32-unknown-unknown
         - curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh -s -- -f
       script:
-        - cd wasmdemos/tunnel
-        - wasm-pack build -- -p wasm-tunnel
+        - cd wasmdemos
+        - wasm-pack build -- -p m4vga-wasm-demos
  
 before_script:
   - rustup target add thumbv7em-none-eabihf

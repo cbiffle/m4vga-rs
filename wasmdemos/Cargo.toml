@@ -1,9 +1,9 @@
 [package]
-name = "wasm-tunnel"
+name = "m4vga-wasm-demos"
 version = "0.1.0"
 authors = ["Cliff L. Biffle <code@cliffle.com>"]
 edition = "2018"
-workspace = "../.."
+workspace = ".."
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -13,9 +13,9 @@ default = ["console_error_panic_hook"]
 
 [dependencies]
 wasm-bindgen = "0.2"
-m4vga = {path = "../../m4vga", default-features=false}
-m4vga-fx-common = {path = "../../fx/common", default-features=false}
-m4vga-fx-tunnel = {path = "../../fx/tunnel", default-features=false}
+m4vga = {path = "../m4vga", default-features=false}
+m4vga-fx-common = {path = "../fx/common", default-features=false}
+m4vga-fx-tunnel = {path = "../fx/tunnel", default-features=false}
 arrayref = "0.3"
 
 # The `console_error_panic_hook` crate provides better debugging of panics by

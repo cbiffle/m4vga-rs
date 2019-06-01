@@ -5,7 +5,6 @@ use m4vga_fx_common::{Demo, Raster, Render};
 use m4vga_fx_tunnel as fx;
 use m4vga::util::spin_lock::SpinLock;
 
-
 const FIXED_WIDTH: usize = 800;
 const FIXED_HEIGHT: usize = 600;
 
@@ -72,7 +71,7 @@ impl<'a, S> Sim<S> where S: Demo<'a> {
             ),
         );
         for (ln, target32) in
-            self.framebuffer.chunks_mut(fx::NATIVE_WIDTH).enumerate()
+            self.framebuffer.chunks_mut(FIXED_WIDTH).enumerate()
         {
             if ctx.repeat_lines > 0 {
                 ctx.repeat_lines -= 1;

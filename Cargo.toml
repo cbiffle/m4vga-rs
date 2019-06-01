@@ -10,7 +10,7 @@ members = [
   "fx/common",
   "fx/tunnel",
 
-  "wasmdemos/tunnel",
+  "wasmdemos",
 ]
 default-members = ["m4demos"]
 
