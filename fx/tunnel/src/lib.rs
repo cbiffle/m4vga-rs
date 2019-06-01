@@ -1,4 +1,4 @@
-#![cfg_attr(feature = "bare_metal", no_std)]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod table;
 pub mod render;
@@ -16,8 +16,7 @@ const BUFFER_SIZE: usize = WIDTH * HALF_HEIGHT;
 const BUFFER_WORDS: usize = BUFFER_SIZE / 4;
 pub const BUFFER_STRIDE: usize = WIDTH / 4;
 
-#[cfg(feature = "bare_metal")]
+#[cfg(target_os = "none")]
 mod bare;
-
-#[cfg(feature = "bare_metal")]
+#[cfg(target_os = "none")]
 pub use bare::*;
