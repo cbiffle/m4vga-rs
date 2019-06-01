@@ -33,11 +33,14 @@ fn main() -> ! {
                 raster_state.raster_callback(ln, tgt, ctx, p0)
             },
             // This closure contains the main loop of the program.
-            |vga| loop {
-                vga.sync_to_vblank();
-                render_state.render_frame(frame);
-                frame = (frame + 1) % 65536;
-                vga.video_on();
+            |vga| {
+                let priority = m4vga::priority::Thread::new_checked().unwrap();
+                loop {
+                    vga.sync_to_vblank();
+                    render_state.render_frame(frame, priority);
+                    frame = (frame + 1) % 65536;
+                    vga.video_on();
+                }
             },
         )
 }

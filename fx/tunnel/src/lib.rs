@@ -112,7 +112,7 @@ impl<'a, B, T> Render for RenderState<'a, B, T>
 where B: AsMut<[u32]> + Send,
       T: core::borrow::Borrow<table::Table>,
 {
-    fn render_frame(&mut self, frame: usize) {
+    fn render_frame(&mut self, frame: usize, _: m4vga::priority::Thread) {
         core::mem::swap(self.bg, &mut *self.fg.try_lock().expect("swap access"));
         let bg = u32_as_u8_mut(self.bg.as_mut());
         m4vga::util::measurement::sig_d_set();

@@ -9,6 +9,7 @@ members = [
 
   "fx/common",
   "fx/tunnel",
+  "fx/rotozoom",
 
   "wasmdemos",
 ]

@@ -18,5 +18,5 @@ pub trait Raster {
 }
 
 pub trait Render {
-    fn render_frame(&mut self, frame: usize);
+    fn render_frame(&mut self, frame: usize, _: m4vga::priority::Thread);
 }

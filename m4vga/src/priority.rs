@@ -59,6 +59,14 @@ impl Thread {
     }
 }
 
+#[cfg(not(target_os = "none"))]
+impl Thread {
+    /// Returns a `Thread` token only if called from thread priority.
+    pub fn new_checked() -> Option<Self> {
+        Some(unsafe { Self::new() })
+    }
+}
+
 /// Indicates that a type represents an interrupt priority level.
 pub trait InterruptPriority {}
 

@@ -1,0 +1,16 @@
+[package]
+name = "m4vga-fx-rotozoom"
+version = "0.1.0"
+authors = ["Cliff L. Biffle <code@cliffle.com>"]
+edition = "2018"
+workspace = "../.."
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies]
+m4vga = {path = "../../m4vga"}
+libm = "0.1.2"
+m4vga-fx-common = {path = "../common"}
+math = {path = "../../math"}
