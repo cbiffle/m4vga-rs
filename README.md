@@ -25,7 +25,9 @@ with, and any variation in timing will corrupt the display.
 
 ## The Demos
 
-The demos all live in [m4demos/src/bin][3]. As of this writing, they are:
+The demo `main` files live in [m4demos/src/bin][3], though the core
+implementations of several of the demos have migrated into the [fx][12]
+directory.
 
 - [`conway`][conway]: full-screen [Conway's Game of Life][4] at 60fps -- that's
   28.8 million cell updates per second, for a budget of 5 cycles per update
@@ -111,14 +113,15 @@ $ cargo run --release --bin horiz_tp
 [6]: https://rust-embedded.github.io/book
 [7]: https://github.com/cbiffle/m4vgalib-demos/blob/master/README.mkdn#connections
 [11]: https://github.com/cbiffle/m4vgalib
+[12]: fx/
 
 [conway]: m4demos/src/bin/conway
 [hires_text]: m4demos/src/bin/hires_text.rs
 [horiz_tp]: m4demos/src/bin/horiz_tp.rs
 [poly3]: m4demos/src/bin/poly3/
 [rook]: m4demos/src/bin/rook/
-[rotozoom]: m4demos/src/bin/rotozoom.rs
-[tunnel]: m4demos/src/bin/tunnel.rs
+[rotozoom]: fx/rotozoom/src/lib.rs
+[tunnel]: fx/tunnel/src/lib.rs
 [xor_pattern]: m4demos/src/bin/xor_pattern
 
 [chess-set]: http://cliffle.com/project/chess-set-i/
