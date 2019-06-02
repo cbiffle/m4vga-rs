@@ -28,10 +28,13 @@ canvas.height = height;
 canvas.width = width;
 
 const playPauseButton = document.getElementById("run-pause");
+const stepButton = document.getElementById("single-step");
+const restartButton = document.getElementById("restart");
+const demoSelect = document.getElementById("choose-demo");
 
 const play = () => {
   playPauseButton.textContent = "⏸";
-  document.getElementById("single-step").disabled = true;
+  stepButton.disabled = true;
   renderLoop();
 };
 
@@ -39,7 +42,7 @@ const pause = () => {
   playPauseButton.textContent = "▶";
   cancelAnimationFrame(animationId);
   animationId = null;
-  document.getElementById("single-step").disabled = false;
+  stepButton.disabled = false;
 };
 
 const isPaused = () => {
@@ -54,12 +57,16 @@ playPauseButton.addEventListener("click", event => {
   }
 });
 
-document.getElementById("single-step").addEventListener("click", event => {
+stepButton.addEventListener("click", event => {
   demo.step();
   drawFramebuffer();
 });
 
-const demoSelect = document.getElementById("choose-demo");
+restartButton.addEventListener("click", event => {
+  let name = demoSelect.options[demoSelect.selectedIndex].text;
+  activate(name);
+});
+
 for (let d in demos) {
   console.log(d);
   let opt = document.createElement("option");
@@ -68,7 +75,6 @@ for (let d in demos) {
 }
 demoSelect.addEventListener("change", event => {
   let name = demoSelect.options[demoSelect.selectedIndex].text;
-  console.log(name);
   activate(name);
 });
 
