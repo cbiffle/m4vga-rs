@@ -1,7 +1,7 @@
+use core::borrow::Borrow;
 use core::marker::PhantomData;
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use core::borrow::Borrow;
 
 use crate::priority;
 
@@ -78,7 +78,8 @@ pub struct RaceReader<'a, S, R: 'static> {
 unsafe impl<'a, S, R: 'static> Send for RaceReader<'a, S, R> {}
 
 impl<'a, S, R: 'static> RaceReader<'a, S, R>
-where S: Borrow<[R]>,
+where
+    S: Borrow<[R]>,
 {
     fn load_writer_progress(&self) -> usize {
         unsafe { &self.buf.as_ref().write_mark }.load(Ordering::Relaxed)
@@ -112,7 +113,9 @@ where S: Borrow<[R]>,
 
             // Safety: the RaceWriter will only vend mutable references to lines
             // above `rendered`.
-            unsafe { &self.buf.as_ref().segments[seg_index].borrow()[line_number] }
+            unsafe {
+                &self.buf.as_ref().segments[seg_index].borrow()[line_number]
+            }
         } else {
             panic!(
                 "tearing: scanout reached {} but rendering only {}",
@@ -129,7 +132,8 @@ pub struct RaceWriter<'a, S, R: 'static> {
 }
 
 impl<'a, S, R: 'static> RaceWriter<'a, S, R>
-where S: Borrow<[R]> + AsMut<[R]>,
+where
+    S: Borrow<[R]> + AsMut<[R]>,
 {
     fn load_writer_progress(&self) -> usize {
         unsafe { &self.buf.as_ref().write_mark }.load(Ordering::Relaxed)

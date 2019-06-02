@@ -22,13 +22,14 @@ static mut TABLE: table::Table =
 /// # Safety
 ///
 /// This is safe as long as it's only called once.
-pub unsafe fn init() -> super::State<&'static mut [u32], &'static table::Table> {
+pub unsafe fn init() -> super::State<&'static mut [u32], &'static table::Table>
+{
     let table = &mut TABLE;
     table::compute(table);
     let table = &*table;
 
     let fg = SpinLock::new(&mut BUF0 as &mut [u32]);
     let bg = &mut BUF1 as &mut [u32];
-    
+
     super::State { fg, bg, table }
 }

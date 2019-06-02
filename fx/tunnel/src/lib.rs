@@ -3,8 +3,8 @@
 use m4vga::util::spin_lock::SpinLock;
 use m4vga_fx_common::{Demo, Raster, Render};
 
-pub mod table;
 pub mod render;
+pub mod table;
 
 pub const NATIVE_WIDTH: usize = 800;
 pub const NATIVE_HEIGHT: usize = 600;
@@ -41,17 +41,16 @@ pub struct RenderState<'a, B, T> {
 }
 
 impl<'a, B, T> Demo<'a> for State<B, T>
-where B: AsMut<[u32]> + Send + 'a,
-      T: core::borrow::Borrow<table::Table> + 'a,
+where
+    B: AsMut<[u32]> + Send + 'a,
+    T: core::borrow::Borrow<table::Table> + 'a,
 {
     type Raster = RasterState<'a, B>;
     type Render = RenderState<'a, B, T>;
 
     fn split(&'a mut self) -> (Self::Raster, Self::Render) {
         (
-            RasterState {
-                fg: &self.fg,
-            },
+            RasterState { fg: &self.fg },
             RenderState {
                 fg: &self.fg,
                 bg: &mut self.bg,
@@ -62,7 +61,8 @@ where B: AsMut<[u32]> + Send + 'a,
 }
 
 impl<'a, B> Raster for RasterState<'a, B>
-where B: AsMut<[u32]> + Send,
+where
+    B: AsMut<[u32]> + Send,
 {
     fn raster_callback(
         &mut self,
@@ -105,15 +105,18 @@ where B: AsMut<[u32]> + Send,
         ctx.cycles_per_pixel *= SCALE;
         ctx.repeat_lines = SCALE - 1;
     }
-
 }
 
 impl<'a, B, T> Render for RenderState<'a, B, T>
-where B: AsMut<[u32]> + Send,
-      T: core::borrow::Borrow<table::Table>,
+where
+    B: AsMut<[u32]> + Send,
+    T: core::borrow::Borrow<table::Table>,
 {
     fn render_frame(&mut self, frame: usize, _: m4vga::priority::Thread) {
-        core::mem::swap(self.bg, &mut *self.fg.try_lock().expect("swap access"));
+        core::mem::swap(
+            self.bg,
+            &mut *self.fg.try_lock().expect("swap access"),
+        );
         let bg = u32_as_u8_mut(self.bg.as_mut());
         m4vga::util::measurement::sig_d_set();
         self::render::render(self.table.borrow(), bg, frame);

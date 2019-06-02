@@ -227,7 +227,8 @@ impl Raster {
 
         // Retire tris that are ending.
         let tris = &self.tris;
-        self.active.swap_remove_if(|i| i.index(tris).last_y == scanline);
+        self.active
+            .swap_remove_if(|i| i.index(tris).last_y == scanline);
     }
 }
 

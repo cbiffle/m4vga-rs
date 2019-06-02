@@ -1,10 +1,10 @@
 mod utils;
 
-use wasm_bindgen::prelude::*;
-use m4vga_fx_common::{Demo, Raster, Render};
-use m4vga_fx_tunnel as tunnel;
-use m4vga_fx_rotozoom as roto;
 use m4vga::util::spin_lock::SpinLock;
+use m4vga_fx_common::{Demo, Raster, Render};
+use m4vga_fx_rotozoom as roto;
+use m4vga_fx_tunnel as tunnel;
+use wasm_bindgen::prelude::*;
 
 const FIXED_WIDTH: usize = 800;
 const FIXED_HEIGHT: usize = 600;
@@ -48,7 +48,10 @@ impl<S> Sim<S> {
     }
 }
 
-impl<'a, S> Sim<S> where S: Demo<'a> {
+impl<'a, S> Sim<S>
+where
+    S: Demo<'a>,
+{
     pub fn step(&'a mut self) {
         // Safety: wasm is not a concurrent environment right now, so preemption
         // is not an issue.
@@ -91,7 +94,6 @@ impl<'a, S> Sim<S> where S: Demo<'a> {
     }
 }
 
-
 #[wasm_bindgen]
 pub struct Tunnel(Sim<tunnel::State<Vec<u32>, Box<tunnel::table::Table>>>);
 
@@ -101,15 +103,20 @@ impl Tunnel {
         // Good a place as any...
         self::utils::set_panic_hook();
 
-        let mut table = Box::new([[tunnel::table::Entry::zero(); tunnel::table::TAB_WIDTH];
-            tunnel::table::TAB_HEIGHT]);
+        let mut table = Box::new(
+            [[tunnel::table::Entry::zero(); tunnel::table::TAB_WIDTH];
+                tunnel::table::TAB_HEIGHT],
+        );
         tunnel::table::compute(&mut table);
 
-        Tunnel(tunnel::State {
-            fg: SpinLock::new(vec![RED_X4; tunnel::BUFFER_WORDS]),
-            bg: vec![RED_X4; tunnel::BUFFER_WORDS],
-            table,
-        }.into())
+        Tunnel(
+            tunnel::State {
+                fg: SpinLock::new(vec![RED_X4; tunnel::BUFFER_WORDS]),
+                bg: vec![RED_X4; tunnel::BUFFER_WORDS],
+                table,
+            }
+            .into(),
+        )
     }
 
     pub fn framebuffer(&self) -> *const u32 {
@@ -130,14 +137,19 @@ impl Rotozoom {
         // Good a place as any...
         self::utils::set_panic_hook();
 
-        let mut table = Box::new([[tunnel::table::Entry::zero(); tunnel::table::TAB_WIDTH];
-            tunnel::table::TAB_HEIGHT]);
+        let mut table = Box::new(
+            [[tunnel::table::Entry::zero(); tunnel::table::TAB_WIDTH];
+                tunnel::table::TAB_HEIGHT],
+        );
         tunnel::table::compute(&mut table);
 
-        Rotozoom(roto::State::new([
-            vec![[0; roto::BUFFER_STRIDE]; roto::HALF_HEIGHT],
-            vec![[0; roto::BUFFER_STRIDE]; roto::HALF_HEIGHT],
-        ]).into())
+        Rotozoom(
+            roto::State::new([
+                vec![[0; roto::BUFFER_STRIDE]; roto::HALF_HEIGHT],
+                vec![[0; roto::BUFFER_STRIDE]; roto::HALF_HEIGHT],
+            ])
+            .into(),
+        )
     }
 
     pub fn framebuffer(&self) -> *const u32 {
@@ -186,7 +198,7 @@ fn secondary_unpack(
             for pixel in dest {
                 *pixel = val;
             }
-        },
+        }
         x => panic!("unsupported cycles_per_pixel: {}", x),
     }
 }

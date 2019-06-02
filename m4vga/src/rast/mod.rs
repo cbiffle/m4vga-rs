@@ -32,11 +32,11 @@ impl TargetBuffer {
         &mut self.0
     }
 
-    pub fn from_array_mut(array: &mut [u32; TARGET_BUFFER_SIZE / 4]) -> &mut Self {
+    pub fn from_array_mut(
+        array: &mut [u32; TARGET_BUFFER_SIZE / 4],
+    ) -> &mut Self {
         // Safety: repr(transparent) makes this okay.
-        unsafe {
-            core::mem::transmute(array)
-        }
+        unsafe { core::mem::transmute(array) }
     }
 }
 

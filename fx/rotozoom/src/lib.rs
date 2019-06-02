@@ -2,8 +2,8 @@
 
 use core::borrow::Borrow;
 
-use m4vga::util::race_buf::{RaceReader,RaceWriter,RaceBuffer};
 use m4vga::rast::direct;
+use m4vga::util::race_buf::{RaceBuffer, RaceReader, RaceWriter};
 use m4vga_fx_common::{Demo, Raster, Render};
 
 use math::{Augment, Mat3f, Matrix, Project, Vec2};
@@ -56,7 +56,8 @@ pub struct RenderState<'a, S> {
 }
 
 impl<'a, S: 'a> Demo<'a> for State<S>
-where S: Borrow<[Row]> + AsMut<[Row]>,
+where
+    S: Borrow<[Row]> + AsMut<[Row]>,
 {
     type Raster = RasterState<'a, S>;
     type Render = RenderState<'a, S>;
@@ -64,9 +65,7 @@ where S: Borrow<[Row]> + AsMut<[Row]>,
     fn split(&'a mut self) -> (Self::Raster, Self::Render) {
         let (reader, writer) = self.race_buf.split();
         (
-            RasterState {
-                reader,
-            },
+            RasterState { reader },
             RenderState {
                 writer,
                 m: &mut self.m,
@@ -77,7 +76,8 @@ where S: Borrow<[Row]> + AsMut<[Row]>,
 }
 
 impl<'a, S> Raster for RasterState<'a, S>
-where S: Borrow<[Row]>,
+where
+    S: Borrow<[Row]>,
 {
     fn raster_callback(
         &mut self,
@@ -94,7 +94,8 @@ where S: Borrow<[Row]>,
 }
 
 impl<'a, S> Render for RenderState<'a, S>
-where S: Borrow<[Row]> + AsMut<[Row]>,
+where
+    S: Borrow<[Row]> + AsMut<[Row]>,
 {
     fn render_frame(&mut self, frame: usize, thread: m4vga::priority::Thread) {
         self.writer.reset(&thread);
@@ -106,12 +107,9 @@ where S: Borrow<[Row]> + AsMut<[Row]>,
 
         let m_ = *self.m * Mat3f::translate(tx, ty) * Mat3f::scale(s, s);
 
-        let top_left =
-            (m_ * Vec2(-COLS / 2., -ROWS / 2.).augment()).project();
-        let top_right =
-            (m_ * Vec2(COLS / 2., -ROWS / 2.).augment()).project();
-        let bot_left =
-            (m_ * Vec2(-COLS / 2., ROWS / 2.).augment()).project();
+        let top_left = (m_ * Vec2(-COLS / 2., -ROWS / 2.).augment()).project();
+        let top_right = (m_ * Vec2(COLS / 2., -ROWS / 2.).augment()).project();
+        let bot_left = (m_ * Vec2(-COLS / 2., ROWS / 2.).augment()).project();
 
         let xi = (top_right - top_left) * (1. / COLS);
         let yi = (bot_left - top_left) * (1. / ROWS);
@@ -147,5 +145,3 @@ fn u32_as_u8_mut(slice: &mut [u32]) -> &mut [u8] {
 fn tex_fetch(u: f32, v: f32) -> u32 {
     u as i32 as u32 ^ v as i32 as u32
 }
-
-
