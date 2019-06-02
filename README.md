@@ -61,6 +61,32 @@ directory.
 
 ## Building it
 
+All of this is tested only on Linux, but it should work on Mac -- though you'll
+have to translate the commands below to your package manager of choice.
+
+### Web target
+
+I recently made the core of `m4vga` portable, and I'm gradually porting demos to
+run on WebAssembly. While this is less exciting than running on a real,
+resource-starved microcontroller, it gives you a way to test out the code
+without having to move a bunch of wires around.
+
+First, [follow the Rust WASM setup guide here][rust-wasm-setup]. In short, you
+will need Rust, `wasm-pack`, and `npm`. (Debian/Ubuntu users: the ancient `npm`
+in `apt` will not work.)
+
+Now:
+
+```shell
+$ wasm-pack build -- -p m4vga-wasm-demos
+$ (cd www; npm run start)
+```
+
+Point a browser at [http://localhost:8080/][localhost] and you should be able to
+view the demos!
+
+### Microcontroller target
+
 You will need an STM32F407-based board to run this on; I use the
 STM32F4-Discovery because it's *really cheap.* Hook it up to a VGA connector
 according to [my instructions for C++][7].
@@ -104,8 +130,6 @@ can flash one of the demos by typing:
 $ cargo run --release --bin horiz_tp
 ```
 
-(All of this is tested only on Linux.)
-
 [1]: https://github.com/cbiffle/m4vgalib-demos
 [2]: https://rust-lang.org
 [3]: m4demos/src/bin
@@ -126,3 +150,5 @@ $ cargo run --release --bin horiz_tp
 
 [chess-set]: http://cliffle.com/project/chess-set-i/
 [rust-port]: doc/rust-port.md
+[rust-wasm-setup]: https://rustwasm.github.io/book/game-of-life/setup.html
+[localhost]: http://localhost:8080/
