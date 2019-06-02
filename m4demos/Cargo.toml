@@ -10,6 +10,7 @@ default = ["panic-itm"]
 
 [dependencies]
 m4vga-fx-common = {path = "../fx/common", default-features = false}
+m4vga-fx-conway = {path = "../fx/conway", default-features = false}
 m4vga-fx-tunnel = {path = "../fx/tunnel", default-features = false}
 m4vga-fx-rotozoom = {path = "../fx/rotozoom", default-features = false}
 m4vga = {path = "../m4vga"}

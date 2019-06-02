@@ -1,0 +1,11 @@
+[package]
+name = "m4vga-fx-conway"
+version = "0.1.0"
+authors = ["Cliff L. Biffle <code@cliffle.com>"]
+edition = "2018"
+workspace = "../.."
+
+[dependencies]
+m4vga = {path = "../../m4vga"}
+m4vga-fx-common = {path = "../common"}
+rand = {version = "0.6", default-features = false}

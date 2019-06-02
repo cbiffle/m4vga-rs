@@ -66,7 +66,7 @@ fn col_step(above: &[Unit; 3], current: &[Unit; 3], below: &[Unit; 3]) -> Unit {
 
 // TODO: I'm fixing this at 800x600 for now to make the indexing operations
 // cheaper. Revisit.
-type Buffer = [Unit; 800 * 600 / BITS];
+type Buffer = [Unit];
 const WIDTH: usize = 800 / 32;
 const HEIGHT: usize = 600;
 

@@ -183,6 +183,7 @@ dependencies = [
  "libm 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "m4vga 0.1.0",
  "m4vga-fx-common 0.1.0",
+ "m4vga-fx-conway 0.1.0",
  "m4vga-fx-rotozoom 0.1.0",
  "m4vga-fx-tunnel 0.1.0",
  "math 0.1.0",
@@ -222,6 +223,15 @@ name = "m4vga-fx-common"
 version = "0.1.0"
 dependencies = [
  "m4vga 0.1.0",
+]
+
+[[package]]
+name = "m4vga-fx-conway"
+version = "0.1.0"
+dependencies = [
+ "m4vga 0.1.0",
+ "m4vga-fx-common 0.1.0",
+ "rand 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

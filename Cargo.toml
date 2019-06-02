@@ -8,6 +8,8 @@ members = [
   "stlmunge",
 
   "fx/common",
+
+  "fx/conway",
   "fx/tunnel",
   "fx/rotozoom",
 
