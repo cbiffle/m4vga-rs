@@ -1,31 +1,25 @@
 {
-  "name": "create-wasm-app",
+  "name": "m4vga-wasm-demos",
   "version": "0.1.0",
-  "description": "create an app to consume rust-generated wasm packages",
+  "description": "m4vga demos ported to the web",
   "main": "index.js",
-  "bin": {
-    "create-wasm-app": ".bin/create-wasm-app.js"
-  },
   "scripts": {
     "build": "webpack --config webpack.config.js",
     "start": "webpack-dev-server"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rustwasm/create-wasm-app.git"
+    "url": "git+https://github.com/cbiffle/m4vga-rs.git"
   },
   "keywords": [
     "webassembly",
     "wasm",
     "rust",
-    "webpack"
+    "demoscene"
   ],
-  "author": "Ashley Williams <ashley666ashley@gmail.com>",
-  "license": "(MIT OR Apache-2.0)",
-  "bugs": {
-    "url": "https://github.com/rustwasm/create-wasm-app/issues"
-  },
-  "homepage": "https://github.com/rustwasm/create-wasm-app#readme",
+  "author": "Cliff L. Biffle <code@cliffle.com>",
+  "license": "BSD-2-Clause",
+  "homepage": "https://github.com/cbiffle/m4vga-rs#readme",
   "devDependencies": {
     "m4vga-wasm-demos": "file:../pkg",
     "webpack": "^4.29.3",
