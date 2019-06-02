@@ -63,6 +63,7 @@ fn main() -> ! {
                     vga.sync_to_vblank();
                     render.render_frame(frame, thread);
                     frame += 1;
+                    vga.video_on();
                 }
             },
         )

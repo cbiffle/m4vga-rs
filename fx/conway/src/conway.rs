@@ -75,6 +75,9 @@ const HEIGHT: usize = 600;
 ///    state.
 ///  - next_map is a framebuffer (bitmap) that will be filled in.
 pub fn step(current_map: &Buffer, next_map: &mut Buffer) {
+    let current_map = &current_map[..WIDTH * HEIGHT];
+    let next_map = &mut next_map[..WIDTH * HEIGHT];
+
     // We keep sliding windows of state in these arrays.
     let mut above = [0; 3];
     let mut current = [0; 3];

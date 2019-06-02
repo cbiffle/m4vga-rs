@@ -7,6 +7,21 @@ pub fn render(table: &table::Table, fb: &mut [u8], frame: usize) {
 
     let frame = frame as f32;
 
+    // Hey look, it's a rare case where I have to optimize bounds checking!
+    // This routine originally operated upon a fixed-length array, ensuring that
+    // bounds checking for predictable indices (like those generated in the loop
+    // below) got compiled out. I switched it to a dynamic slice during the
+    // portability sprint...and lost 30fps on the microcontroller.
+    //
+    // Why?
+    //
+    // Because I had asked it to be slower. Well, not in so few words, but: each
+    // index into `fb` below is a bounds-check. The algorithm as written says
+    // "get as much of this done as you can, until you panic at the end of fb."
+    // That isn't useful, or what I intended, so the following line moves the
+    // bounds check to the top of the loop. Back to 60fps.
+    let fb = &mut fb[..super::BUFFER_WORDS * 4];
+
     // The distance we have traveled into the tunnel.
     let z = frame * DSPEED;
     // The angle of the tunnel's rotation.
