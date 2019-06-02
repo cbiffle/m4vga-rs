@@ -261,6 +261,7 @@ dependencies = [
  "console_error_panic_hook 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "m4vga 0.1.0",
  "m4vga-fx-common 0.1.0",
+ "m4vga-fx-conway 0.1.0",
  "m4vga-fx-rotozoom 0.1.0",
  "m4vga-fx-tunnel 0.1.0",
  "wasm-bindgen 0.2.45 (registry+https://github.com/rust-lang/crates.io-index)",

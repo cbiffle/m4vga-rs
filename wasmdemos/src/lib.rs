@@ -1,10 +1,12 @@
 mod utils;
 
 use m4vga::util::spin_lock::SpinLock;
+use wasm_bindgen::prelude::*;
+
 use m4vga_fx_common::{Demo, Raster, Render};
+use m4vga_fx_conway as conway;
 use m4vga_fx_rotozoom as roto;
 use m4vga_fx_tunnel as tunnel;
-use wasm_bindgen::prelude::*;
 
 const FIXED_WIDTH: usize = 800;
 const FIXED_HEIGHT: usize = 600;
@@ -94,73 +96,6 @@ where
     }
 }
 
-#[wasm_bindgen]
-pub struct Tunnel(Sim<tunnel::State<Vec<u32>, Box<tunnel::table::Table>>>);
-
-#[wasm_bindgen]
-impl Tunnel {
-    pub fn new() -> Self {
-        // Good a place as any...
-        self::utils::set_panic_hook();
-
-        let mut table = Box::new(
-            [[tunnel::table::Entry::zero(); tunnel::table::TAB_WIDTH];
-                tunnel::table::TAB_HEIGHT],
-        );
-        tunnel::table::compute(&mut table);
-
-        Tunnel(
-            tunnel::State {
-                fg: SpinLock::new(vec![RED_X4; tunnel::BUFFER_WORDS]),
-                bg: vec![RED_X4; tunnel::BUFFER_WORDS],
-                table,
-            }
-            .into(),
-        )
-    }
-
-    pub fn framebuffer(&self) -> *const u32 {
-        self.0.framebuffer()
-    }
-
-    pub fn step(&mut self) {
-        self.0.step()
-    }
-}
-
-#[wasm_bindgen]
-pub struct Rotozoom(Sim<roto::State<Vec<roto::Row>>>);
-
-#[wasm_bindgen]
-impl Rotozoom {
-    pub fn new() -> Self {
-        // Good a place as any...
-        self::utils::set_panic_hook();
-
-        let mut table = Box::new(
-            [[tunnel::table::Entry::zero(); tunnel::table::TAB_WIDTH];
-                tunnel::table::TAB_HEIGHT],
-        );
-        tunnel::table::compute(&mut table);
-
-        Rotozoom(
-            roto::State::new([
-                vec![[0; roto::BUFFER_STRIDE]; roto::HALF_HEIGHT],
-                vec![[0; roto::BUFFER_STRIDE]; roto::HALF_HEIGHT],
-            ])
-            .into(),
-        )
-    }
-
-    pub fn framebuffer(&self) -> *const u32 {
-        self.0.framebuffer()
-    }
-
-    pub fn step(&mut self) {
-        self.0.step()
-    }
-}
-
 fn secondary_unpack(
     ctx: &m4vga::rast::RasterCtx,
     src: &[u32],
@@ -209,4 +144,103 @@ fn unpack_color8(src: u8) -> u32 {
     let g = (src as u32 & 0b11_00) << (4 + 8);
     let b = (src as u32 & 0b11_00_00) << (2 + 16);
     0xFF_00_00_00 | r | g | b
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+#[wasm_bindgen]
+pub struct Tunnel(Sim<tunnel::State<Vec<u32>, Box<tunnel::table::Table>>>);
+
+#[wasm_bindgen]
+impl Tunnel {
+    pub fn new() -> Self {
+        // Good a place as any...
+        self::utils::set_panic_hook();
+
+        let mut table = Box::new(
+            [[tunnel::table::Entry::zero(); tunnel::table::TAB_WIDTH];
+                tunnel::table::TAB_HEIGHT],
+        );
+        tunnel::table::compute(&mut table);
+
+        Tunnel(
+            tunnel::State {
+                fg: SpinLock::new(vec![RED_X4; tunnel::BUFFER_WORDS]),
+                bg: vec![RED_X4; tunnel::BUFFER_WORDS],
+                table,
+            }
+            .into(),
+        )
+    }
+
+    pub fn framebuffer(&self) -> *const u32 {
+        self.0.framebuffer()
+    }
+
+    pub fn step(&mut self) {
+        self.0.step()
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+#[wasm_bindgen]
+pub struct Rotozoom(Sim<roto::State<Vec<roto::Row>>>);
+
+#[wasm_bindgen]
+impl Rotozoom {
+    pub fn new() -> Self {
+        // Good a place as any...
+        self::utils::set_panic_hook();
+
+        let mut table = Box::new(
+            [[tunnel::table::Entry::zero(); tunnel::table::TAB_WIDTH];
+                tunnel::table::TAB_HEIGHT],
+        );
+        tunnel::table::compute(&mut table);
+
+        Rotozoom(
+            roto::State::new([
+                vec![[0; roto::BUFFER_STRIDE]; roto::HALF_HEIGHT],
+                vec![[0; roto::BUFFER_STRIDE]; roto::HALF_HEIGHT],
+            ])
+            .into(),
+        )
+    }
+
+    pub fn framebuffer(&self) -> *const u32 {
+        self.0.framebuffer()
+    }
+
+    pub fn step(&mut self) {
+        self.0.step()
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+#[wasm_bindgen]
+pub struct Conway(Sim<conway::State<Vec<u32>>>);
+
+#[wasm_bindgen]
+impl Conway {
+    pub fn new() -> Self {
+        // Good a place as any...
+        self::utils::set_panic_hook();
+
+        Conway(Sim::from(conway::State::new(
+            vec![0; 800 * 600 / 32],
+            vec![0; 800 * 600 / 32],
+            0b11_11_11,
+            0b00_00_00,
+        )))
+    }
+
+    pub fn framebuffer(&self) -> *const u32 {
+        self.0.framebuffer()
+    }
+
+    pub fn step(&mut self) {
+        self.0.step()
+    }
 }

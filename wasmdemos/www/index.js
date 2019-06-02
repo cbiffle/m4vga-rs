@@ -1,9 +1,10 @@
-import { Tunnel, Rotozoom } from "m4vga-wasm-demos";
+import { Tunnel, Rotozoom, Conway } from "m4vga-wasm-demos";
 import * as wasm from "m4vga-wasm-demos";
 import { memory } from "m4vga-wasm-demos/m4vga_wasm_demos_bg";
 
 const demos = {
   "tunnel": Tunnel,
+  "conway": Conway,
   "rotozoom": Rotozoom,
 };
 
