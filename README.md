@@ -139,7 +139,7 @@ $ cargo run --release --bin horiz_tp
 [11]: https://github.com/cbiffle/m4vgalib
 [12]: fx/
 
-[conway]: m4demos/src/bin/conway
+[conway]: m4demos/src/bin/conway.rs
 [hires_text]: m4demos/src/bin/hires_text.rs
 [horiz_tp]: m4demos/src/bin/horiz_tp.rs
 [poly3]: m4demos/src/bin/poly3/
